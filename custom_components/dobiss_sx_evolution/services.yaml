@@ -1,0 +1,6 @@
+refresh:
+  name: Refresh state
+  description: >-
+    Sends a state-dump request to every configured DOBISS CAN bus, forcing the
+    controller to re-broadcast the current output states. Use this when
+    Home Assistant's cached state appears to have drifted from reality.

@@ -1,0 +1,15 @@
+{
+  "domain": "dobiss_sx_evolution",
+  "name": "DOBISS SX Evolution",
+  "codeowners": ["@DaanVervacke"],
+  "config_flow": true,
+  "documentation": "https://github.com/DaanVervacke/hass-dobiss-sx-evolution",
+  "homeassistant": "2026.6.0",
+  "integration_type": "hub",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/DaanVervacke/hass-dobiss-sx-evolution/issues",
+  "loggers": ["dobiss_sx_evolution"],
+  "quality_scale": "gold",
+  "requirements": ["python-can==4.5.0"],
+  "version": "0.5.0"
+}

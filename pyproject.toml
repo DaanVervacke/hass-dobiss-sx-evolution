@@ -1,0 +1,18 @@
+[project]
+name = "hass-dobiss-sx-evolution"
+version = "0.5.0"
+description = "Home Assistant custom integration for DOBISS SX Evolution."
+requires-python = ">=3.12"
+dependencies = [
+    "python-can==4.5.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest-homeassistant-custom-component~=0.13.150",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+pythonpath = ["."]
+testpaths = ["tests"]
