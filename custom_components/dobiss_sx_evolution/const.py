@@ -22,8 +22,8 @@ DEFAULT_PORT: Final = 29536
 
 # CAN frame identifiers (29-bit extended). Values match the DOBISS firmware
 # expectations one-to-one with the Gleam reference implementation.
-CAN_ID_TX_STATE: Final = 0x800102  # 8_388_866 — HA → DOBISS state write
-CAN_ID_STATE_DUMP: Final = 0x800101  # 8_388_865 — request full state dump
+CAN_ID_TX_STATE: Final = 0x800102  # 8_388_866 - HA → DOBISS state write
+CAN_ID_STATE_DUMP: Final = 0x800101  # 8_388_865 - request full state dump
 
 OUTPUTS_PER_MODULE: Final = 12
 DISCOVERY_TIMEOUT_S: Final = 15.0

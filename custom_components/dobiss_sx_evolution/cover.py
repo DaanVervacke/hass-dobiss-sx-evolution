@@ -1,4 +1,4 @@
-"""Cover platform for DOBISS SX Evolution — window screens / shutters."""
+"""Cover platform for DOBISS SX Evolution - window screens / shutters."""
 
 from __future__ import annotations
 
@@ -57,7 +57,7 @@ async def async_setup_entry(
 class DobissShutter(DobissEntity, CoverEntity):
     """A DOBISS-driven shutter / window screen.
 
-    Stateless on the bus — the controller reports no position feedback.
+    Stateless on the bus - the controller reports no position feedback.
     `is_closed` returns None so HA shows the canonical "unknown" state for
     this class of cover, and `assumed_state=True` keeps the open/close/stop
     buttons always available regardless of the reported state.

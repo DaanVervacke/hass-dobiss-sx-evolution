@@ -1,4 +1,4 @@
-"""DOBISS SX Evolution CAN protocol — frame encoding and brightness scaling."""
+"""DOBISS SX Evolution CAN protocol - frame encoding and brightness scaling."""
 
 from __future__ import annotations
 

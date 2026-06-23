@@ -19,7 +19,7 @@ from .coordinator import DobissConfigEntry, DobissCoordinator
 from .entity import DobissEntity
 from .protocol import can_to_ha_brightness
 
-# Each write goes directly to the CAN bus — no shared resource needs
+# Each write goes directly to the CAN bus - no shared resource needs
 # serialisation at the platform level.
 PARALLEL_UPDATES = 0
 
@@ -35,11 +35,11 @@ async def async_setup_entry(
         if subentry.subentry_type != SUBENTRY_TYPE_MODULE:
             continue
         module: str = subentry.data["module"]
+        dimmable: bool = subentry.data.get("dimmable", False)
         for output_str, cfg in subentry.data.get("outputs", {}).items():
             if cfg.get("type") != "light":
                 continue
             output = int(output_str)
-            dimmable: bool = cfg.get("dimmable", False)
             entity_name: str = cfg.get("name") or f"{module}{output}"
             async_add_entities(
                 [

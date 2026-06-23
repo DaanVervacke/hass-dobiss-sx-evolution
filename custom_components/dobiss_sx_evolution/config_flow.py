@@ -256,7 +256,7 @@ class ModuleSubentryFlowHandler(ConfigSubentryFlow):
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
 
     # ------------------------------------------------------------------ #
-    # Reconfigure — menu                                                   #
+    # Reconfigure - menu                                                   #
     # ------------------------------------------------------------------ #
 
     async def async_step_reconfigure(

@@ -56,9 +56,9 @@
             "dimmable": "This is a dimmer module"
           },
           "data_description": {
-            "module": "The letter printed on the DOBISS module (A, B, C, …). Each letter can only be used once.",
-            "name": "Optional. Show up in Home Assistant as something more memorable than \"Module A\" — for example \"Kitchen lights\" or \"Ground floor\".",
-            "dimmable": "Turn this on if the physical module is a dimmer (e.g. DIM4, DIM8). Every light you add to it will then expose a brightness slider. Leave off for relay modules — lights will be on/off only."
+            "module": "The letter assigned to the DOBISS module (A, B, C, ...). Each letter can only be used once.",
+            "name": "Optional. Use a name like \"Kitchen lights\" or \"Ground floor\" instead of the default \"Module A\".",
+            "dimmable": "Turn this on if the physical module is a dimmer. Every light on it will then expose a brightness slider. Relay modules should leave this off."
           }
         },
         "reconfigure": {
@@ -80,12 +80,12 @@
           },
           "data_description": {
             "output": "The output number on the module this light is wired to (1, 2, 3, …). Each output can only be used by one light or shutter.",
-            "name": "Optional. The name Home Assistant will show — for example \"Kitchen ceiling\" or \"Reading lamp\"."
+            "name": "Optional. The name Home Assistant will show, for example \"Kitchen ceiling\" or \"Reading lamp\"."
           }
         },
         "add_shutter": {
           "title": "Add a shutter",
-          "description": "Shutters use two outputs on the same module — one drives the motor up, the other drives it down.",
+          "description": "Shutters use two outputs on the same module: one drives the motor up and the other drives it down.",
           "data": {
             "up_output": "Up output",
             "down_output": "Down output",
@@ -94,7 +94,7 @@
           "data_description": {
             "up_output": "The output number wired to the motor's UP direction.",
             "down_output": "The output number wired to the motor's DOWN direction. Must differ from the up output.",
-            "name": "Optional. The name Home Assistant will show — for example \"Living room blind\" or \"Bedroom screen\"."
+            "name": "Optional. The name Home Assistant will show, for example \"Living room blind\" or \"Bedroom screen\"."
           }
         },
         "remove_output": {
@@ -109,16 +109,16 @@
         },
         "edit_module": {
           "title": "Edit module settings",
-          "description": "Update this module's letter, name, or dimmer setting. Toggling the dimmer flag applies to every light already on this module — they'll switch between brightness-capable and on/off after the next reload.",
+          "description": "Update this module's letter, name, or dimmer setting. Toggling the dimmer flag applies to every light already on this module. They will switch between brightness-capable and on/off after the next reload.",
           "data": {
             "module": "Module letter",
             "name": "Friendly name",
             "dimmable": "This is a dimmer module"
           },
           "data_description": {
-            "module": "The letter printed on the DOBISS module (A, B, C, …). Each letter can only be used once.",
-            "name": "Optional. Show up in Home Assistant as something more memorable than \"Module A\".",
-            "dimmable": "Turn this on if the physical module is a dimmer (e.g. DIM4, DIM8). Applies to every light on this module."
+            "module": "The letter assigned to the DOBISS module (A, B, C, ...). Each letter can only be used once.",
+            "name": "Optional. Use a name like \"Kitchen lights\" or \"Ground floor\" instead of the default \"Module A\".",
+            "dimmable": "Turn this on if the physical module is a dimmer. Applies to every light on this module."
           }
         }
       },

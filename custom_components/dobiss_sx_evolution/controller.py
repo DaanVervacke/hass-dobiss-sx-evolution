@@ -1,4 +1,4 @@
-"""DOBISS controller — owns the CAN bus connection and dispatches updates."""
+"""DOBISS controller - owns the CAN bus connection and dispatches updates."""
 
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ _LOGGER = logging.getLogger(__name__)
 RECONNECT_BACKOFF_INITIAL_S = 1.0
 RECONNECT_BACKOFF_MAX_S = 60.0
 
-# Fast TCP reachability check — python-can's socketcand client busy-loops for
+# Fast TCP reachability check - python-can's socketcand client busy-loops for
 # 10s on a closed/unreachable port, spamming the log. We pre-check the socket
 # so we surface OSError in ~2s and skip the noisy retry loop entirely.
 _TCP_PRECHECK_TIMEOUT_S = 2.0
@@ -129,7 +129,7 @@ class DobissController:
         )
 
     def _make_bus(self) -> can.BusABC:
-        """Synchronous bus factory — must be called from an executor."""
+        """Synchronous bus factory - must be called from an executor."""
         return make_bus_sync(self.host, self.port, self.interface)
 
     async def _open_bus(self) -> None:
@@ -315,7 +315,7 @@ class DobissController:
                 raise
             except Exception:  # noqa: BLE001
                 _LOGGER.warning(
-                    "CAN read loop failed — reconnecting in %.1fs", backoff,
+                    "CAN read loop failed - reconnecting in %.1fs", backoff,
                     exc_info=True,
                 )
 
@@ -330,12 +330,12 @@ class DobissController:
             except Exception:  # noqa: BLE001
                 new_backoff = min(backoff * 2, RECONNECT_BACKOFF_MAX_S)
                 _LOGGER.warning(
-                    "CAN reconnect failed — retrying in %.1fs",
+                    "CAN reconnect failed - retrying in %.1fs",
                     new_backoff,
                     exc_info=True,
                 )
                 if new_backoff >= RECONNECT_BACKOFF_MAX_S:
-                    # Backoff has hit its ceiling — surface a repair issue so the
+                    # Backoff has hit its ceiling - surface a repair issue so the
                     # user knows the connection is persistently unavailable.
                     self._raise_repair_issue()
                 backoff = new_backoff
@@ -343,12 +343,12 @@ class DobissController:
 
             self.reconnect_count += 1
             _LOGGER.info("CAN bus reconnected, state-dump requested")
-            # Connection recovered — remove any outstanding repair issue.
+            # Connection recovered - remove any outstanding repair issue.
             self._clear_repair_issue()
             backoff = RECONNECT_BACKOFF_INITIAL_S
 
     async def _read_frames(self) -> None:
-        """Inner reader — drives ingest until something throws."""
+        """Inner reader - drives ingest until something throws."""
         import can  # noqa: PLC0415
 
         if self._bus is None:
@@ -376,8 +376,8 @@ class DobissController:
     def _ingest_message(self, msg: can.Message) -> None:
         """Parse a CAN message and update local state if it matches an output.
 
-        The DOBISS controller broadcasts ALL state updates — both dump
-        responses and wall-switch presses — on arbitration ID 0x1010000.
+        The DOBISS controller broadcasts ALL state updates - both dump
+        responses and wall-switch presses - on arbitration ID 0x1010000.
         State writes we send on 0x800002 may echo back via SocketCAN
         loopback, so we explicitly drop those.
         """
