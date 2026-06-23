@@ -32,9 +32,38 @@ persistently unavailable.
 ## Prerequisites
 
 - Home Assistant **2026.6.0** or newer
-- A [`socketcand`](https://github.com/linux-can/socketcand) daemon reachable
-  from your Home Assistant instance, with the DOBISS CAN bus attached to the
-  interface you want to expose (default: `can0`, port `29536`)
+- A [`socketcand`](https://github.com/linux-can/socketcand) daemon running on a
+  host with a CAN interface connected to your DOBISS system. The daemon must be
+  reachable from your Home Assistant instance before you set up this integration
+  (default: `can0`, port `29536`).
+
+See the [Socketcand setup guide](#socketcand-setup-guide) below if you have not
+configured this yet.
+
+## Socketcand setup guide
+
+`socketcand` acts as a TCP bridge between your CAN interface and network
+clients like this integration.
+
+### 1. Bring up the CAN interface
+
+The Max200 operates at **125 kbit/s**.
+
+```bash
+sudo ip link set can0 type can bitrate 125000
+sudo ip link set can0 up
+```
+
+Replace `can0` with your actual interface name if it differs. Verify the
+interface is up with `ip link show can0`.
+
+### 2. Start socketcand
+
+```bash
+socketcand -i can0 -p 29536
+```
+
+You can make this persistent with systemd.
 
 ## Installation
 

@@ -9,7 +9,7 @@ from homeassistant.components.light import (
     ColorMode,
     LightEntity,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
@@ -17,7 +17,7 @@ from .const import SUBENTRY_TYPE_MODULE
 from .controller import OutputKey
 from .coordinator import DobissConfigEntry, DobissCoordinator
 from .entity import DobissEntity
-from .protocol import can_to_ha_brightness
+from .protocol import can_to_ha_brightness, ha_to_can_brightness
 
 # Each write goes directly to the CAN bus - no shared resource needs
 # serialisation at the platform level.
@@ -76,12 +76,33 @@ class DobissLight(DobissEntity, LightEntity):
             module=module,
         )
         self._key = key
+        # Tracks the CAN-scale value we most recently wrote so we can detect
+        # when an external event (wall switch) changes the brightness and know
+        # it is safe to discard the optimistic HA-native brightness.
+        self._optimistic_can_value: int | None = None
         if dimmable:
             self._attr_color_mode = ColorMode.BRIGHTNESS
             self._attr_supported_color_modes = {ColorMode.BRIGHTNESS}
         else:
             self._attr_color_mode = ColorMode.ONOFF
             self._attr_supported_color_modes = {ColorMode.ONOFF}
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Clear the optimistic brightness when an external change arrives.
+
+        The coordinator fires on every state push (wall switch presses as well
+        as echoes of our own writes). When the CAN value reported by the
+        controller differs from what we sent, the change came from outside
+        (e.g. a wall switch) and we must fall back to the coordinator-derived
+        brightness so the slider reflects the real hardware state.
+        """
+        if self._optimistic_can_value is not None:
+            current_can = self.coordinator.controller.states.get(self._key, 0)
+            if current_can != self._optimistic_can_value:
+                self._attr_brightness = None
+                self._optimistic_can_value = None
+        super()._handle_coordinator_update()
 
     @property
     def is_on(self) -> bool:
@@ -90,18 +111,37 @@ class DobissLight(DobissEntity, LightEntity):
 
     @property
     def brightness(self) -> int | None:
-        """Return brightness scaled to 0–255, or None for non-dimmable."""
+        """Return brightness scaled to 0–255, or None for non-dimmable.
+
+        When we have an optimistic value (set by async_turn_on before the CAN
+        echo returns) we return it verbatim so the HA slider does not snap to
+        the coarser quantised value that the round-trip conversion would produce.
+        Once an external state change is detected by _handle_coordinator_update
+        the optimistic value is cleared and we fall back to the coordinator state.
+        """
         if not self.coordinator.controller.dimmable(self._key):
             return None
+        if self._attr_brightness is not None:
+            return self._attr_brightness
         return can_to_ha_brightness(self.coordinator.controller.states.get(self._key, 0))
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the light on, optionally with a brightness."""
+        ha_brightness: int | None = kwargs.get(ATTR_BRIGHTNESS)
+        if ha_brightness is not None and self.coordinator.controller.dimmable(self._key):
+            # Store the HA-native brightness optimistically so the slider does
+            # not snap back to the quantised round-trip value while the CAN echo
+            # is in flight.  We also record the CAN-scale value we are about to
+            # send so _handle_coordinator_update can recognise the echo as ours.
+            self._attr_brightness = ha_brightness
+            self._optimistic_can_value = ha_to_can_brightness(ha_brightness)
         try:
             await self.coordinator.controller.async_turn_on(
-                self._key, brightness=kwargs.get(ATTR_BRIGHTNESS)
+                self._key, brightness=ha_brightness
             )
         except RuntimeError as err:
+            self._attr_brightness = None
+            self._optimistic_can_value = None
             raise HomeAssistantError(
                 translation_domain="dobiss_sx_evolution",
                 translation_key="cannot_send",
@@ -109,6 +149,8 @@ class DobissLight(DobissEntity, LightEntity):
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the light off."""
+        self._attr_brightness = None
+        self._optimistic_can_value = None
         try:
             await self.coordinator.controller.async_turn_off(self._key)
         except RuntimeError as err:

@@ -2,7 +2,7 @@
   "config": {
     "step": {
       "user": {
-        "title": "Connect to your DOBISS CAN bus",
+        "title": "Connect to your SX Evolution's CAN bus",
         "description": "Home Assistant talks to the DOBISS Max200 through a socketcand daemon running near the bus. Tell me where to find it.",
         "data": {
           "host": "socketcand host",
@@ -11,8 +11,8 @@
         },
         "data_description": {
           "host": "Hostname or IP address of the machine running socketcand. For example: 192.168.1.10 or homeserver.local.",
-          "port": "TCP port socketcand is listening on. The DOBISS default is 29536.",
-          "interface": "Name of the CAN interface on the socketcand host. Almost always can0."
+          "port": "TCP port socketcand is listening on. The default for this integration is 29536.",
+          "interface": "Name of the CAN interface on the socketcand host. The default for this integration is can0."
         }
       },
       "reauth_confirm": {
