@@ -30,7 +30,7 @@ async def test_coordinator_update_failed_when_bus_down(
     entry = _make_entry(hass)
     coordinator = DobissCoordinator(hass, entry)
 
-    mock_controller._bus = None
+    mock_controller.is_bus_connected = False
 
     with pytest.raises(UpdateFailed):
         await coordinator._async_update_data()
@@ -43,7 +43,7 @@ async def test_coordinator_returns_states_when_bus_up(
     entry = _make_entry(hass)
     coordinator = DobissCoordinator(hass, entry)
 
-    mock_controller._bus = object()
+    mock_controller.is_bus_connected = True
     mock_controller.states = {("01", 1): 1, ("01", 2): 0}
 
     result = await coordinator._async_update_data()

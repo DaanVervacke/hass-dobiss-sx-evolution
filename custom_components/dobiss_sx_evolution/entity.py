@@ -51,4 +51,4 @@ class DobissEntity(CoordinatorEntity[DobissCoordinator]):
     @property
     def available(self) -> bool:
         """Return True if coordinator update succeeded and the CAN bus is connected."""
-        return super().available and self.coordinator.controller._bus is not None
+        return super().available and self.coordinator.controller.is_bus_connected

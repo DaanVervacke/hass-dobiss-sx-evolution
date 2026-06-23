@@ -55,9 +55,7 @@ def build_state_frame(module: str, output: int, state: int) -> tuple[int, bytes]
     return CAN_ID_TX_STATE, bytes([0x00, module_byte, output_byte, state & 0xFF])
 
 
-def build_dump_request() -> tuple[int, bytes]:
-    """Build the state-dump request frame."""
-    return CAN_ID_STATE_DUMP, b""
+DUMP_REQUEST_FRAME: tuple[int, bytes] = (CAN_ID_STATE_DUMP, b"")
 
 
 def can_to_ha_brightness(can_state: int) -> int:

@@ -20,7 +20,7 @@ from .const import (
     MAX_CAN_BRIGHTNESS_TX,
 )
 from .protocol import (
-    build_dump_request,
+    DUMP_REQUEST_FRAME,
     build_state_frame,
     ha_to_can_brightness,
     parse_state_frame,
@@ -97,11 +97,16 @@ class DobissController:
         )
         self.states: dict[OutputKey, int] = {}
         self.reconnect_count: int = 0
-        self._entry_id = entry_id
+        self._issue_id: str = f"cannot_connect_{entry_id}"
         self._bus: can.BusABC | None = None
         self._reader_task: asyncio.Task[None] | None = None
         self._listeners: list[Callable[[OutputKey, int], None]] = []
         self._repair_issue_active: bool = False
+
+    @property
+    def is_bus_connected(self) -> bool:
+        """Return True when the CAN bus connection is open."""
+        return self._bus is not None
 
     def dimmable(self, key: OutputKey) -> bool:
         """Return whether this output is configured as a dimmer."""
@@ -128,10 +133,6 @@ class DobissController:
             self._read_loop(), f"dobiss_sx_evolution[{self.interface}]"
         )
 
-    def _make_bus(self) -> can.BusABC:
-        """Synchronous bus factory - must be called from an executor."""
-        return make_bus_sync(self.host, self.port, self.interface)
-
     async def _open_bus(self) -> None:
         """(Re-)open the CAN bus, closing the old one if any."""
         if self._bus is not None:
@@ -141,7 +142,9 @@ class DobissController:
                 await self.hass.async_add_executor_job(old.shutdown)
             except Exception:  # noqa: BLE001
                 _LOGGER.debug("Error closing stale bus", exc_info=True)
-        self._bus = await self.hass.async_add_executor_job(self._make_bus)
+        self._bus = await self.hass.async_add_executor_job(
+            make_bus_sync, self.host, self.port, self.interface
+        )
 
     async def async_shutdown(self) -> None:
         """Cancel the reader and close the bus."""
@@ -193,7 +196,7 @@ class DobissController:
 
     async def async_request_dump(self) -> None:
         """Send a state-dump request to the bus (triggers a full status refresh)."""
-        await self._send_frame(*build_dump_request())
+        await self._send_frame(*DUMP_REQUEST_FRAME)
 
     async def _send_state(self, module: str, output: int, value: int) -> None:
         frame = build_state_frame(module, output, value)
@@ -233,7 +236,7 @@ class DobissController:
         if self._bus is None:
             return
         configured_modules: set[str] = set(self.modules)
-        await self._send_frame(*build_dump_request())
+        await self._send_frame(*DUMP_REQUEST_FRAME)
 
         loop = asyncio.get_running_loop()
         reader = can.AsyncBufferedReader()
@@ -268,10 +271,6 @@ class DobissController:
                 sorted(missing),
             )
 
-    def _issue_id(self) -> str:
-        """Return a stable issue ID for this entry's connection repair issue."""
-        return f"cannot_connect_{self._entry_id}"
-
     @callback
     def _raise_repair_issue(self) -> None:
         """Create a repair issue when the CAN bus connection is persistently lost."""
@@ -281,7 +280,7 @@ class DobissController:
         ir.async_create_issue(
             self.hass,
             DOMAIN,
-            self._issue_id(),
+            self._issue_id,
             is_fixable=False,
             is_persistent=False,
             learn_more_url="https://github.com/DaanVervacke/hass-dobiss-sx-evolution",
@@ -296,7 +295,7 @@ class DobissController:
         if not self._repair_issue_active:
             return
         self._repair_issue_active = False
-        ir.async_delete_issue(self.hass, DOMAIN, self._issue_id())
+        ir.async_delete_issue(self.hass, DOMAIN, self._issue_id)
 
     async def _read_loop(self) -> None:
         """Background loop: ingest frames, reconnect on failure.
@@ -324,7 +323,7 @@ class DobissController:
                 await self._open_bus()
                 # Most recent state may have drifted while we were deaf;
                 # the dump re-seeds the cache via the normal ingest path.
-                await self._send_frame(*build_dump_request())
+                await self._send_frame(*DUMP_REQUEST_FRAME)
             except asyncio.CancelledError:
                 raise
             except Exception:  # noqa: BLE001

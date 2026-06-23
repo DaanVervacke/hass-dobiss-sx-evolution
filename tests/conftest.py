@@ -57,7 +57,7 @@ def mock_controller():
     fake.shutters = []
     fake.states = {}
     fake.reconnect_count = 0
-    fake._bus = object()  # truthy so coordinator doesn't raise UpdateFailed
+    fake.is_bus_connected = True
 
     fake.async_setup = AsyncMock(return_value=None)
     fake.async_shutdown = AsyncMock(return_value=None)

@@ -108,7 +108,7 @@ class DobissCoordinator(DataUpdateCoordinator[dict[OutputKey, int]]):
         callers that trigger a manual refresh (e.g. async_request_refresh)
         observe the failure instead of receiving a stale cache silently.
         """
-        if self.controller._bus is None:  # noqa: SLF001
+        if not self.controller.is_bus_connected:
             raise UpdateFailed("Bus connection lost")
         return dict(self.controller.states)
 

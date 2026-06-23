@@ -37,7 +37,7 @@ async def test_raise_repair_issue_creates_issue(hass: HomeAssistant) -> None:
     ctrl._raise_repair_issue()
 
     issue_reg = ir.async_get(hass)
-    issue = issue_reg.async_get_issue(DOMAIN, ctrl._issue_id())
+    issue = issue_reg.async_get_issue(DOMAIN, ctrl._issue_id)
     assert issue is not None
     assert issue.translation_key == "cannot_connect"
     assert ctrl._repair_issue_active is True
@@ -50,7 +50,7 @@ async def test_raise_repair_issue_idempotent(hass: HomeAssistant) -> None:
     ctrl._raise_repair_issue()
 
     issue_reg = ir.async_get(hass)
-    issue = issue_reg.async_get_issue(DOMAIN, ctrl._issue_id())
+    issue = issue_reg.async_get_issue(DOMAIN, ctrl._issue_id)
     assert issue is not None
     assert ctrl._repair_issue_active is True
 
@@ -61,11 +61,11 @@ async def test_clear_repair_issue_removes_issue(hass: HomeAssistant) -> None:
     ctrl._raise_repair_issue()
 
     issue_reg = ir.async_get(hass)
-    assert issue_reg.async_get_issue(DOMAIN, ctrl._issue_id()) is not None
+    assert issue_reg.async_get_issue(DOMAIN, ctrl._issue_id) is not None
 
     ctrl._clear_repair_issue()
 
-    assert issue_reg.async_get_issue(DOMAIN, ctrl._issue_id()) is None
+    assert issue_reg.async_get_issue(DOMAIN, ctrl._issue_id) is None
     assert ctrl._repair_issue_active is False
 
 
@@ -82,6 +82,6 @@ async def test_issue_id_is_entry_specific(hass: HomeAssistant) -> None:
     """Each entry gets its own issue ID so multiple entries don't collide."""
     ctrl_a = _make_controller(hass, entry_id="entry_aaa")
     ctrl_b = _make_controller(hass, entry_id="entry_bbb")
-    assert ctrl_a._issue_id() != ctrl_b._issue_id()
-    assert "entry_aaa" in ctrl_a._issue_id()
-    assert "entry_bbb" in ctrl_b._issue_id()
+    assert ctrl_a._issue_id != ctrl_b._issue_id
+    assert "entry_aaa" in ctrl_a._issue_id
+    assert "entry_bbb" in ctrl_b._issue_id
