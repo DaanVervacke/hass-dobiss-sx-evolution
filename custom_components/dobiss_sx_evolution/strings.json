@@ -3,7 +3,11 @@
     "step": {
       "user": {
         "title": "Connect to your SX Evolution's CAN bus",
-        "description": "Home Assistant talks to the DOBISS Max200 through a socketcand daemon running near the bus. Tell me where to find it.",
+        "description": "Select your connection method: socketcand daemon or USB adapter."
+      },
+      "socketcand": {
+        "title": "Connect via socketcand",
+        "description": "Home Assistant talks to the DOBISS SX Evolution through a socketcand daemon running near the bus. Tell me where to find it.",
         "data": {
           "host": "socketcand host",
           "port": "socketcand port",
@@ -15,8 +19,8 @@
           "interface": "Name of the CAN interface on the socketcand host. The default for this integration is can0."
         }
       },
-      "reauth_confirm": {
-        "title": "Reconnect to your DOBISS CAN bus",
+      "reauth_socketcand": {
+        "title": "Reconnect to socketcand",
         "description": "Home Assistant lost the connection. Confirm or update the socketcand details below and we'll try again.",
         "data": {
           "host": "socketcand host",
@@ -28,15 +32,40 @@
           "port": "TCP port socketcand is listening on (default 29536).",
           "interface": "Name of the CAN interface on the socketcand host (typically can0)."
         }
+      },
+      "reauth_usb": {
+        "title": "Reconnect USB CAN adapter",
+        "description": "Home Assistant lost the connection. Confirm or update the USB CAN adapter details below and we'll try again.",
+        "data": {
+          "device": "Device path"
+        },
+        "data_description": {
+          "device": "Path to the serial device."
+        }
+      },
+      "usb": {
+        "title": "Connect via USB CAN adapter",
+        "description": "Connect directly to a USB CAN adapter like Canable, Lawicel, or other compatible devices.",
+        "data": {
+          "device": "Device path"
+        },
+        "data_description": {
+          "device": "Path to the serial device. On Linux: /dev/ttyACM0, /dev/ttyUSB0. On Windows: COM3, COM4, etc."
+        }
       }
     },
     "error": {
-      "cannot_connect": "Couldn't reach socketcand. Check the host, port, and that the CAN interface is up on the socketcand machine.",
-      "unknown": "Something went wrong. Check the Home Assistant logs for details."
+      "cannot_connect": "Couldn't connect to the CAN bus. Check your connection settings and that the device/daemon is available.",
+      "unknown": "Something went wrong. Check the Home Assistant logs for details.",
+      "invalid_connection_type": "Please select a valid connection type.",
+      "invalid_output": "Please provide valid output settings.",
+      "same_output": "Up and down outputs must be different.",
+      "duplicate_output": "That output is already in use by another light or shutter on this module."
     },
     "abort": {
       "already_configured": "This DOBISS connection is already set up in Home Assistant.",
-      "reauth_successful": "Reconnected to the DOBISS CAN bus."
+      "reauth_successful": "Reconnected to the DOBISS CAN bus.",
+      "no_outputs_to_remove": "This module doesn't have any outputs to remove yet."
     }
   },
   "config_subentries": {
@@ -150,7 +179,7 @@
   "issues": {
     "cannot_connect": {
       "title": "DOBISS CAN bus connection lost",
-      "description": "Home Assistant can no longer reach the socketcand daemon at {host} for CAN interface {interface}. Check that socketcand is running and that your network connection is healthy. Use **Reconfigure** on the DOBISS SX Evolution integration to update the connection settings if they have changed."
+      "description": "Home Assistant can no longer connect to the DOBISS CAN bus. Check that your connection device/daemon is available and your network/USB connection is healthy. Use **Reconfigure** on the DOBISS SX Evolution integration to update the connection settings if they have changed."
     }
   }
 }

@@ -8,13 +8,15 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
-
 from homeassistant.components.light import ATTR_BRIGHTNESS, ColorMode
 from homeassistant.core import HomeAssistant
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.dobiss_sx_evolution.const import DOMAIN, SUBENTRY_TYPE_MODULE
+from custom_components.dobiss_sx_evolution.const import (
+    CONNECTION_TYPE_SOCKETCAND,
+    DOMAIN,
+    SUBENTRY_TYPE_MODULE,
+)
 
 from .conftest import MOCK_CONFIG
 
@@ -40,10 +42,16 @@ def _subentry_data(*, dimmable: bool) -> dict:
 
 
 def _make_entry(hass: HomeAssistant, *, dimmable: bool) -> MockConfigEntry:
-    """Build a config entry with one module subentry containing a single light output."""
+    """Build a config entry with one module subentry containing a single light output.
+
+    """
+    entry_data = {
+        "connection_type": CONNECTION_TYPE_SOCKETCAND,
+        **MOCK_CONFIG,
+    }
     entry = MockConfigEntry(
         domain=DOMAIN,
-        data=MOCK_CONFIG,
+        data=entry_data,
         title="DOBISS",
         version=1,
         subentries_data=[_subentry_data(dimmable=dimmable)],
@@ -62,9 +70,13 @@ async def _setup(hass: HomeAssistant, *, dimmable: bool) -> MockConfigEntry:
     lights = [] if dimmable else [output_key]
 
     fake_ctrl = MagicMock(name="DobissController")
+    fake_ctrl.connection_type = CONNECTION_TYPE_SOCKETCAND
     fake_ctrl.host = MOCK_CONFIG["host"]
     fake_ctrl.port = MOCK_CONFIG["port"]
     fake_ctrl.interface = MOCK_CONFIG["interface"]
+    fake_ctrl.device = None
+    fake_ctrl.baudrate = None
+    fake_ctrl.can_interface = None
     fake_ctrl.modules = ["A"]
     fake_ctrl.lights = lights
     fake_ctrl.dimmers = dimmers

@@ -5,8 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import serial.tools.list_ports
 import voluptuous as vol
-
 from homeassistant.config_entries import (
     ConfigEntry,
     ConfigFlow,
@@ -23,17 +23,21 @@ from homeassistant.helpers.selector import (
 )
 
 from .const import (
+    CONF_DEVICE,
     CONF_HOST,
     CONF_INTERFACE,
     CONF_MODULE,
     CONF_NAME,
     CONF_PORT,
+    CONNECTION_TYPE_SOCKETCAND,
+    CONNECTION_TYPE_USB,
+    DEFAULT_BAUDRATE,
     DEFAULT_INTERFACE,
     DEFAULT_PORT,
     DOMAIN,
     SUBENTRY_TYPE_MODULE,
 )
-from .controller import make_bus_sync
+from .controller import make_bus_sync, make_bus_usb_sync
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -52,10 +56,16 @@ def _probe_bus_sync(host: str, port: int, interface: str) -> None:
     Must be called from an executor thread. Raises on any failure.
     """
     bus = make_bus_sync(host, port, interface)
-    try:
-        pass
-    finally:
-        bus.shutdown()
+    bus.shutdown()
+
+
+def _probe_bus_usb(device: str, baudrate: int, interface: str) -> None:
+    """Open and immediately close a USB CAN bus to validate connectivity.
+
+    Must be called from an executor thread. Raises on any failure.
+    """
+    bus = make_bus_usb_sync(device, baudrate, interface)
+    bus.shutdown()
 
 
 def _validate_module(module: str) -> str | None:
@@ -84,14 +94,81 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
+    @staticmethod
+    def _get_connection_type_schema() -> vol.Schema:
+        """Return schema for connection type selection."""
+        connection_options: list[SelectOptionDict] = [
+            SelectOptionDict(
+                label="socketcand (TCP to socketcand daemon)",
+                value=CONNECTION_TYPE_SOCKETCAND,
+            ),
+            SelectOptionDict(
+                label="USB CAN adapter (direct serial connection)",
+                value=CONNECTION_TYPE_USB,
+            ),
+        ]
+        return vol.Schema(
+            {
+                vol.Required("connection_type"): SelectSelector(
+                    SelectSelectorConfig(
+                        options=connection_options,
+                        mode=SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+            }
+        )
+
+    async def _build_usb_device_options(self) -> list[SelectOptionDict]:
+        from homeassistant.components import usb  # noqa: PLC0415
+
+        ports = await self.hass.async_add_executor_job(
+            serial.tools.list_ports.comports
+        )
+        options: list[SelectOptionDict] = []
+        for port in ports:
+            device_path = await self.hass.async_add_executor_job(
+                usb.get_serial_by_id, port.device
+            )
+            display_name = usb.human_readable_device_name(
+                device=device_path,
+                serial_number=port.serial_number,
+                manufacturer=port.manufacturer,
+                description=port.description,
+                vid=port.vid,
+                pid=port.pid,
+            )
+            options.append(SelectOptionDict(label=display_name, value=device_path))
+        return options
+
     async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle the first step: connection type selection."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            connection_type = user_input.get("connection_type")
+            if connection_type == CONNECTION_TYPE_SOCKETCAND:
+                return await self.async_step_socketcand(None)
+            elif connection_type == CONNECTION_TYPE_USB:
+                return await self.async_step_usb(None)
+            else:
+                errors["connection_type"] = "invalid_connection_type"
+
+        return self.async_show_form(
+            step_id="user",
+            data_schema=self._get_connection_type_schema(),
+            errors=errors,
+        )
+
+    async def async_step_socketcand(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Collect socketcand connection details and create the entry."""
         errors: dict[str, str] = {}
         if user_input is not None:
             await self.async_set_unique_id(
-                f"{user_input[CONF_HOST]}:{user_input[CONF_PORT]}/{user_input[CONF_INTERFACE]}"
+                f"{CONNECTION_TYPE_SOCKETCAND}:{user_input[CONF_HOST]}:{user_input[CONF_PORT]}/{user_input[CONF_INTERFACE]}"
             )
             self._abort_if_unique_id_configured()
             try:
@@ -116,6 +193,7 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
                 return self.async_create_entry(
                     title=title,
                     data={
+                        "connection_type": CONNECTION_TYPE_SOCKETCAND,
                         CONF_HOST: user_input[CONF_HOST],
                         CONF_PORT: user_input[CONF_PORT],
                         CONF_INTERFACE: user_input[CONF_INTERFACE],
@@ -123,24 +201,84 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
                 )
 
         return self.async_show_form(
-            step_id="user", data_schema=CONNECTION_SCHEMA, errors=errors
+            step_id="socketcand", data_schema=CONNECTION_SCHEMA, errors=errors
+        )
+
+    async def async_step_usb(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Collect USB CAN device connection details and create the entry."""
+        errors: dict[str, str] = {}
+        device_options = await self._build_usb_device_options()
+
+        if user_input is not None:
+            # For USB devices, use device path as unique identifier
+            await self.async_set_unique_id(
+                f"{CONNECTION_TYPE_USB}:{user_input[CONF_DEVICE]}"
+            )
+            self._abort_if_unique_id_configured()
+            try:
+                await self.hass.async_add_executor_job(
+                    _probe_bus_usb,
+                    user_input[CONF_DEVICE],
+                    DEFAULT_BAUDRATE,
+                    "slcan",
+                )
+            except OSError as err:
+                _LOGGER.debug("USB CAN probe failed (OSError): %s", err)
+                errors["base"] = "cannot_connect"
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.debug("USB CAN probe failed: %s", err)
+                errors["base"] = "cannot_connect"
+            else:
+                title = f"Max200 ({user_input[CONF_DEVICE]})"
+                return self.async_create_entry(
+                    title=title,
+                    data={
+                        "connection_type": CONNECTION_TYPE_USB,
+                        CONF_DEVICE: user_input[CONF_DEVICE],
+                    },
+                )
+
+        # Build dynamic schema with available ports
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_DEVICE): SelectSelector(
+                    SelectSelectorConfig(
+                        options=device_options,
+                        mode=SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+            }
+        )
+
+        return self.async_show_form(
+            step_id="usb", data_schema=schema, errors=errors
         )
 
     async def async_step_reauth(
         self, entry_data: dict[str, Any]
     ) -> ConfigFlowResult:
         """Handle re-authentication when the connection details change."""
-        self._reauth_defaults = {
-            CONF_HOST: entry_data.get(CONF_HOST, ""),
-            CONF_PORT: entry_data.get(CONF_PORT, DEFAULT_PORT),
-            CONF_INTERFACE: entry_data.get(CONF_INTERFACE, DEFAULT_INTERFACE),
-        }
-        return await self.async_step_reauth_confirm()
+        connection_type = entry_data.get("connection_type", CONNECTION_TYPE_SOCKETCAND)
 
-    async def async_step_reauth_confirm(
+        if connection_type == CONNECTION_TYPE_SOCKETCAND:
+            self._reauth_defaults = {
+                CONF_HOST: entry_data.get(CONF_HOST, ""),
+                CONF_PORT: entry_data.get(CONF_PORT, DEFAULT_PORT),
+                CONF_INTERFACE: entry_data.get(CONF_INTERFACE, DEFAULT_INTERFACE),
+            }
+            return await self.async_step_reauth_socketcand()
+        else:
+            self._reauth_defaults = {
+                CONF_DEVICE: entry_data.get(CONF_DEVICE, ""),
+            }
+            return await self.async_step_reauth_usb()
+
+    async def async_step_reauth_socketcand(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Confirm reauth by re-probing with new connection details."""
+        """Confirm reauth by re-probing with new socketcand connection details."""
         errors: dict[str, str] = {}
         entry = self._get_reauth_entry()
 
@@ -189,7 +327,61 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
             }
         )
         return self.async_show_form(
-            step_id="reauth_confirm", data_schema=schema, errors=errors
+            step_id="reauth_socketcand", data_schema=schema, errors=errors
+        )
+
+    async def async_step_reauth_usb(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Confirm reauth by re-probing with new USB connection details."""
+        errors: dict[str, str] = {}
+        entry = self._get_reauth_entry()
+        device_options = await self._build_usb_device_options()
+
+        if user_input is not None:
+            try:
+                await self.hass.async_add_executor_job(
+                    _probe_bus_usb,
+                    user_input[CONF_DEVICE],
+                    DEFAULT_BAUDRATE,
+                    "slcan",
+                )
+            except OSError as err:
+                _LOGGER.debug("USB CAN reauth probe failed (OSError): %s", err)
+                errors["base"] = "cannot_connect"
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.debug("USB CAN reauth probe failed: %s", err)
+                errors["base"] = "cannot_connect"
+            else:
+                new_data = {
+                    **entry.data,
+                    CONF_DEVICE: user_input[CONF_DEVICE],
+                }
+                return self.async_update_reload_and_abort(
+                    entry,
+                    data=new_data,
+                    reason="reauth_successful",
+                )
+
+        defaults = {
+            CONF_DEVICE: entry.data.get(CONF_DEVICE, ""),
+        }
+
+        # Build dynamic schema with available ports
+        schema = vol.Schema(
+            {
+                vol.Required(
+                    CONF_DEVICE, default=defaults.get(CONF_DEVICE, "")
+                ): SelectSelector(
+                    SelectSelectorConfig(
+                        options=device_options,
+                        mode=SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+            }
+        )
+        return self.async_show_form(
+            step_id="reauth_usb", data_schema=schema, errors=errors
         )
 
     @classmethod
@@ -367,9 +559,15 @@ class ModuleSubentryFlowHandler(ConfigSubentryFlow):
         defaults = user_input or {}
         schema = vol.Schema(
             {
-                vol.Required("up_output", default=defaults.get("up_output", 1)): int,
-                vol.Required("down_output", default=defaults.get("down_output", 2)): int,
-                vol.Optional(CONF_NAME, default=defaults.get(CONF_NAME, "")): str,
+                vol.Required(
+                    "up_output", default=defaults.get("up_output", 1)
+                ): int,
+                vol.Required(
+                    "down_output", default=defaults.get("down_output", 2)
+                ): int,
+                vol.Optional(
+                    CONF_NAME, default=defaults.get(CONF_NAME, "")
+                ): str,
             }
         )
         return self.async_show_form(
@@ -415,7 +613,9 @@ class ModuleSubentryFlowHandler(ConfigSubentryFlow):
         schema = vol.Schema(
             {
                 vol.Required("output"): SelectSelector(
-                    SelectSelectorConfig(options=options, mode=SelectSelectorMode.DROPDOWN)
+                    SelectSelectorConfig(
+                        options=options, mode=SelectSelectorMode.DROPDOWN
+                    )
                 ),
             }
         )

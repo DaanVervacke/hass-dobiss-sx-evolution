@@ -45,11 +45,26 @@ async def async_get_config_entry_diagnostics(
             }
         )
 
-    raw: dict[str, Any] = {
-        "controller": {
+    if ctrl.connection_type == "socketcand":
+        connection_info = {
+            "type": "socketcand",
             "host": ctrl.host,
             "port": ctrl.port,
-            "interface": ctrl.interface,
+            "can_interface": ctrl.interface,
+        }
+        redact_fields = {"host"}
+    else:
+        connection_info = {
+            "type": "usb",
+            "device": ctrl.device,
+            "baudrate": ctrl.baudrate,
+            "can_interface": ctrl.can_interface,
+        }
+        redact_fields = set()
+
+    raw: dict[str, Any] = {
+        "connection": connection_info,
+        "controller": {
             "modules": list(ctrl.modules),
             "lights": [list(k) for k in ctrl.lights],
             "dimmers": [list(k) for k in ctrl.dimmers],
@@ -57,9 +72,10 @@ async def async_get_config_entry_diagnostics(
                 asdict(s) if is_dataclass(s) else s for s in ctrl.shutters
             ],
             "reconnect_count": ctrl.reconnect_count,
+            "is_bus_connected": ctrl.is_bus_connected,
         },
         "subentries": subentries_info,
         "states": _serialise_states(ctrl.states),
     }
 
-    return async_redact_data(raw, _TO_REDACT)
+    return async_redact_data(raw, redact_fields)

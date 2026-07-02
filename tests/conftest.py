@@ -47,10 +47,16 @@ def mock_controller():
     Exposes the attributes/methods the integration touches during setup,
     teardown, and listener wiring.
     """
+    from custom_components.dobiss_sx_evolution.const import CONNECTION_TYPE_SOCKETCAND
+
     fake = MagicMock(name="DobissController")
+    fake.connection_type = CONNECTION_TYPE_SOCKETCAND
     fake.host = MOCK_CONFIG["host"]
     fake.port = MOCK_CONFIG["port"]
     fake.interface = MOCK_CONFIG["interface"]
+    fake.device = None
+    fake.baudrate = None
+    fake.can_interface = None
     fake.modules = []
     fake.lights = []
     fake.dimmers = []

@@ -9,6 +9,6 @@
   "issue_tracker": "https://github.com/DaanVervacke/hass-dobiss-sx-evolution/issues",
   "loggers": ["dobiss_sx_evolution"],
   "quality_scale": "gold",
-  "requirements": ["python-can==4.5.0"],
+  "requirements": ["python-can==4.5.0", "pyserial==3.5"],
   "version": "0.1.0"
 }

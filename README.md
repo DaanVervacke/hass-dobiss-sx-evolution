@@ -6,9 +6,11 @@
 [![License][licensebadge]](LICENSE)
 
 Custom [Home Assistant](https://www.home-assistant.io/) integration for the
-[DOBISS SX Evolution](https://dobiss.com/). Connects to a DOBISS CAN bus via a
-[`socketcand`](https://github.com/linux-can/socketcand) daemon over TCP and
-exposes configured outputs as `light` and `cover` entities.
+[DOBISS SX Evolution](https://dobiss.com/). Connects to a DOBISS CAN bus either
+via a [`socketcand`](https://github.com/linux-can/socketcand) daemon over TCP
+or via a USB CAN adapter (slcan-compatible, e.g. CANable) plugged directly
+into your Home Assistant host, and exposes configured outputs as `light` and
+`cover` entities.
 
 ## Supported devices
 
@@ -32,13 +34,15 @@ persistently unavailable.
 ## Prerequisites
 
 - Home Assistant **2026.6.0** or newer
-- A [`socketcand`](https://github.com/linux-can/socketcand) daemon running on a
-  host with a CAN interface connected to your DOBISS system. The daemon must be
-  reachable from your Home Assistant instance before you set up this integration
-  (default: `can0`, port `29536`).
+- One of:
+  - A [`socketcand`](https://github.com/linux-can/socketcand) daemon reachable
+    over TCP from Home Assistant (default: `can0`, port `29536`), or
+  - A USB CAN adapter (slcan-compatible, e.g. CANable) plugged into the Home
+    Assistant host and appearing as `/dev/ttyACM*`, `/dev/ttyUSB*`, or the
+    Windows/macOS equivalent.
 
-See the [Socketcand setup guide](#socketcand-setup-guide) below if you have not
-configured this yet.
+See the [Socketcand setup guide](#socketcand-setup-guide) below if you're
+going the socketcand route and have not configured it yet.
 
 ## Socketcand setup guide
 
@@ -91,13 +95,25 @@ Configuration is done entirely through the Home Assistant UI.
 ### Connection setup
 
 Go to **Settings** > **Devices & Services** > **Add Integration** and search
-for **DOBISS SX Evolution**.
+for **DOBISS SX Evolution**. Pick either **socketcand** or **USB CAN adapter**
+on the first step.
+
+**socketcand**
 
 | Field | Default | Description |
 |---|---|---|
 | Host | -- | Hostname or IP address of the `socketcand` daemon |
 | Port | `29536` | TCP port the daemon listens on |
 | Remote CAN interface | `can0` | CAN interface name as configured in `socketcand` |
+
+**USB CAN adapter**
+
+| Field | Default | Description |
+|---|---|---|
+| Device | -- | Serial device path, picked from a dropdown of detected ports (e.g. `/dev/ttyACM0`, `/dev/serial/by-id/...`) |
+
+The adapter is opened as an `slcan` bus at 115200 baud. The bus itself runs
+at 125 kbit/s (the Max200 line speed).
 
 The integration probes the connection before saving. If the probe fails, a
 `cannot_connect` error is shown and no entry is created.
@@ -129,10 +145,10 @@ up and down output numbers must be distinct and unclaimed.
 
 ### Reconfiguring the connection
 
-If the `socketcand` host, port, or interface changes, open the DOBISS SX
-Evolution card in **Settings** > **Devices & Services** and use the
-**Reconfigure** option. The form pre-fills the current values. The entry is
-reloaded automatically on success.
+If the `socketcand` host/port/interface or the USB device path changes, open
+the DOBISS SX Evolution card in **Settings** > **Devices & Services** and use
+the **Reconfigure** option. The form pre-fills the current values. The entry
+is reloaded automatically on success.
 
 ## Services
 
@@ -162,8 +178,9 @@ This service takes no parameters.
 
 3. **Common errors:**
    - *Cannot connect*: the `socketcand` daemon is unreachable at the
-     configured host and port. Check that the daemon is running and that
-     network access from Home Assistant is not blocked.
+     configured host and port, **or** the USB CAN adapter cannot be opened.
+     Check that the daemon is running (socketcand), or that the device path
+     is correct and Home Assistant has permission to open it (USB).
    - *Cannot send*: a CAN frame write failed after the connection was
      established. The integration will attempt to reconnect automatically.
    - *Repair issue "cannot_connect"*: the CAN bus has been unreachable long

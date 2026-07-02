@@ -6,9 +6,17 @@ from typing import Final
 
 DOMAIN: Final = "dobiss_sx_evolution"
 
+# Connection type constants
+CONNECTION_TYPE_SOCKETCAND: Final = "socketcand"
+CONNECTION_TYPE_USB: Final = "usb"
+
+# socketcand connection constants
 CONF_INTERFACE: Final = "interface"
 CONF_HOST: Final = "host"
 CONF_PORT: Final = "port"
+
+# USB connection constants
+CONF_DEVICE: Final = "device"
 
 # Subentry field constants
 CONF_MODULE: Final = "module"
@@ -19,6 +27,7 @@ SUBENTRY_TYPE_MODULE: Final = "module"
 
 DEFAULT_INTERFACE: Final = "can0"
 DEFAULT_PORT: Final = 29536
+DEFAULT_BAUDRATE: Final = 115200
 
 # CAN frame identifiers (29-bit extended). Values match the DOBISS firmware
 # expectations one-to-one with the Gleam reference implementation.

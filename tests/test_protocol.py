@@ -2,14 +2,13 @@
 from __future__ import annotations
 
 from custom_components.dobiss_sx_evolution.protocol import (
+    DUMP_REQUEST_FRAME,
     StateUpdate,
-    build_dump_request,
     build_state_frame,
     can_to_ha_brightness,
     ha_to_can_brightness,
     parse_state_frame,
 )
-
 
 # ---------------------------------------------------------------------------
 # parse_state_frame
@@ -136,9 +135,9 @@ def test_build_state_frame_invalid_module_returns_none():
 # ---------------------------------------------------------------------------
 
 
-def test_build_dump_request():
-    """Must return exactly (0x800101, b'')."""
-    can_id, payload = build_dump_request()
+def test_dump_request_frame():
+    """Must be exactly (0x800101, b'')."""
+    can_id, payload = DUMP_REQUEST_FRAME
     assert can_id == 0x800101
     assert payload == b""
 

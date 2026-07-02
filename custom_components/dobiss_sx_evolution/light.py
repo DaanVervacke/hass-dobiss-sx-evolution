@@ -123,12 +123,17 @@ class DobissLight(DobissEntity, LightEntity):
             return None
         if self._attr_brightness is not None:
             return self._attr_brightness
-        return can_to_ha_brightness(self.coordinator.controller.states.get(self._key, 0))
+        return can_to_ha_brightness(
+            self.coordinator.controller.states.get(self._key, 0)
+        )
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the light on, optionally with a brightness."""
         ha_brightness: int | None = kwargs.get(ATTR_BRIGHTNESS)
-        if ha_brightness is not None and self.coordinator.controller.dimmable(self._key):
+        if (
+            ha_brightness is not None
+            and self.coordinator.controller.dimmable(self._key)
+        ):
             # Store the HA-native brightness optimistically so the slider does
             # not snap back to the quantised round-trip value while the CAN echo
             # is in flight.  We also record the CAN-scale value we are about to

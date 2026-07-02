@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import logging
 import socket
 from collections.abc import Callable
 from dataclasses import dataclass
-import logging
-from typing import TYPE_CHECKING, TypeAlias
+from typing import TYPE_CHECKING
 
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import issue_registry as ir
@@ -15,6 +16,8 @@ from homeassistant.helpers.issue_registry import IssueSeverity
 
 from .const import (
     CAN_ID_TX_STATE,
+    CONNECTION_TYPE_SOCKETCAND,
+    DEFAULT_BAUDRATE,
     DISCOVERY_TIMEOUT_S,
     DOMAIN,
     MAX_CAN_BRIGHTNESS_TX,
@@ -39,7 +42,7 @@ RECONNECT_BACKOFF_MAX_S = 60.0
 # so we surface OSError in ~2s and skip the noisy retry loop entirely.
 _TCP_PRECHECK_TIMEOUT_S = 2.0
 
-OutputKey: TypeAlias = tuple[str, int]
+type OutputKey = tuple[str, int]
 
 
 @dataclass(frozen=True)
@@ -51,7 +54,7 @@ class ShutterConfig:
     down_output: int
 
 
-def make_bus_sync(host: str, port: int, interface: str) -> "can.BusABC":
+def make_bus_sync(host: str, port: int, interface: str) -> can.BusABC:
     """Open and return a python-can socketcand Bus.
 
     Must be called from an executor thread.
@@ -70,25 +73,59 @@ def make_bus_sync(host: str, port: int, interface: str) -> "can.BusABC":
     )
 
 
+def make_bus_usb_sync(device: str, baudrate: int, interface: str) -> can.BusABC:
+    """Open and return a python-can USB Bus.
+
+    Must be called from an executor thread. Raises on any failure.
+
+    Args:
+        device: Serial port device path (e.g., /dev/ttyACM0, COM3)
+        baudrate: Baud rate for serial connection
+        interface: python-can interface type (slcan, serial, etc.)
+    """
+    import can  # noqa: PLC0415
+
+    kwargs = {"tty_baudrate": baudrate} if interface == "slcan" else {"baudrate": baudrate}
+    return can.Bus(interface=interface, channel=device, **kwargs)
+
+
 class DobissController:
     """Owns the CAN bus, runs the read loop, and applies state writes."""
 
     def __init__(
         self,
         hass: HomeAssistant,
-        host: str,
-        port: int,
-        interface: str,
+        connection_type: str,
         lights: list[OutputKey],
         dimmers: list[OutputKey],
         shutters: list[ShutterConfig],
         entry_id: str = "",
+        host: str | None = None,
+        port: int | None = None,
+        interface: str | None = None,
+        device: str | None = None,
+        baudrate: int | None = None,
+        can_interface: str | None = None,
     ) -> None:
-        """Initialize the controller."""
+        """Initialize the controller.
+
+        Args:
+            connection_type: Either CONNECTION_TYPE_SOCKETCAND or CONNECTION_TYPE_USB
+            host: TCP host for socketcand
+            port: TCP port for socketcand
+            interface: CAN interface name for socketcand
+            device: Serial device path for USB (e.g., /dev/ttyACM0)
+            baudrate: Baud rate for USB connection
+            can_interface: python-can interface type (slcan, serial, etc.)
+        """
         self.hass = hass
+        self.connection_type = connection_type
         self.host = host
         self.port = port
         self.interface = interface
+        self.device = device
+        self.baudrate = baudrate
+        self.can_interface = can_interface
         self.lights = lights
         self.dimmers = dimmers
         self.shutters = shutters
@@ -142,29 +179,44 @@ class DobissController:
                 await self.hass.async_add_executor_job(old.shutdown)
             except Exception:  # noqa: BLE001
                 _LOGGER.debug("Error closing stale bus", exc_info=True)
-        self._bus = await self.hass.async_add_executor_job(
-            make_bus_sync, self.host, self.port, self.interface
-        )
+
+        if self.connection_type == CONNECTION_TYPE_SOCKETCAND:
+            self._bus = await self.hass.async_add_executor_job(
+                make_bus_sync,
+                self.host or "",
+                self.port or 0,
+                self.interface or "",
+            )
+        else:  # CONNECTION_TYPE_USB
+            self._bus = await self.hass.async_add_executor_job(
+                make_bus_usb_sync,
+                self.device or "",
+                self.baudrate or DEFAULT_BAUDRATE,
+                self.can_interface or "slcan",
+            )
 
     async def async_shutdown(self) -> None:
         """Cancel the reader and close the bus."""
         if self._reader_task is not None:
             self._reader_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._reader_task
-            except asyncio.CancelledError:
-                pass
             self._reader_task = None
         if self._bus is not None:
             bus = self._bus
             self._bus = None
             await self.hass.async_add_executor_job(bus.shutdown)
 
-    async def async_turn_on(self, key: OutputKey, brightness: int | None = None) -> None:
+    async def async_turn_on(
+        self, key: OutputKey, brightness: int | None = None
+    ) -> None:
         """Send an ON write. brightness is HA-scaled (0–255) for dimmable outputs."""
         module, output = key
         if self.dimmable(key):
-            value = ha_to_can_brightness(brightness) if brightness is not None else MAX_CAN_BRIGHTNESS_TX
+            if brightness is not None:
+                value = ha_to_can_brightness(brightness)
+            else:
+                value = MAX_CAN_BRIGHTNESS_TX
         else:
             value = 1
         await self._send_state(module, output, value)
@@ -249,8 +301,10 @@ class DobissController:
                 if remaining <= 0:
                     break
                 try:
-                    msg = await asyncio.wait_for(reader.get_message(), timeout=remaining)
-                except asyncio.TimeoutError:
+                    msg = await asyncio.wait_for(
+                        reader.get_message(), timeout=remaining
+                    )
+                except TimeoutError:
                     break
                 self._ingest_message(msg)
                 # Track which configured modules we have seen at least one frame from.
@@ -277,6 +331,17 @@ class DobissController:
         if self._repair_issue_active:
             return
         self._repair_issue_active = True
+        # Build placeholders based on connection type
+        placeholders: dict[str, str] = {}
+        if self.connection_type == CONNECTION_TYPE_SOCKETCAND:
+            if self.host:
+                placeholders["host"] = self.host
+            if self.interface:
+                placeholders["interface"] = self.interface
+        else:
+            if self.device:
+                placeholders["device"] = self.device
+
         ir.async_create_issue(
             self.hass,
             DOMAIN,
@@ -286,7 +351,7 @@ class DobissController:
             learn_more_url="https://github.com/DaanVervacke/hass-dobiss-sx-evolution",
             severity=IssueSeverity.ERROR,
             translation_key="cannot_connect",
-            translation_placeholders={"host": self.host, "interface": self.interface},
+            translation_placeholders=placeholders,
         )
 
     @callback

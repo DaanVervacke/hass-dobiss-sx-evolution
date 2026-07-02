@@ -1,24 +1,22 @@
 """Tests for repair issue creation/deletion in DobissController."""
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
-
-import pytest
-
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
 
 from custom_components.dobiss_sx_evolution.const import DOMAIN
-from custom_components.dobiss_sx_evolution.controller import (
-    RECONNECT_BACKOFF_MAX_S,
-    DobissController,
-)
+from custom_components.dobiss_sx_evolution.controller import DobissController
 
 
-def _make_controller(hass: HomeAssistant, entry_id: str = "test_entry_id") -> DobissController:
+def _make_controller(
+    hass: HomeAssistant, entry_id: str = "test_entry_id"
+) -> DobissController:
     """Build a minimal DobissController with no outputs."""
+    from custom_components.dobiss_sx_evolution.const import CONNECTION_TYPE_SOCKETCAND
+
     return DobissController(
         hass,
+        connection_type=CONNECTION_TYPE_SOCKETCAND,
         host="192.168.1.10",
         port=29536,
         interface="can0",
