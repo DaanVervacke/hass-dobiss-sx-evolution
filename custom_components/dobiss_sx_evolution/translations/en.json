@@ -35,7 +35,7 @@
       },
       "usb": {
         "title": "Connect via USB CAN adapter",
-        "description": "Connect directly to a USB CAN adapter like Canable, Lawicel, or other compatible devices.",
+        "description": "Connect directly to a USB CAN adapter like CANable, Lawicel, or other compatible devices.",
         "data": {
           "device": "Device path"
         },

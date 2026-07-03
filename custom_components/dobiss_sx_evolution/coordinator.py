@@ -94,7 +94,7 @@ class DobissCoordinator(DataUpdateCoordinator[dict[OutputKey, int]]):
             port = None
             interface = None
             device = entry.data.get(CONF_DEVICE)
-            # For USB CAN (Canable), baudrate is always 115200 and interface is slcan
+            # For USB CAN (CANable), baudrate is always 115200 and interface is slcan
             baudrate = DEFAULT_BAUDRATE
             can_interface = "slcan"
 
