@@ -24,18 +24,24 @@ class StateUpdate:
 def parse_state_frame(data: bytes) -> StateUpdate | None:
     """Parse an inbound state frame.
 
-    Layout: <padding> <module ASCII> <0-indexed output> <state> <…>
+    Layout: <padding> <module ASCII> <BCD 0-indexed output> <state> <…>
+
+    DOBISS uses BCD symmetrically on the output byte: outputs 11 and 12
+    (zero-indexed 10 and 11) arrive as 0x10 and 0x11, matching the encoding
+    build_state_frame uses on transmit.  A plain +1 decode would misroute
+    those frames to outputs 17 and 18 and their entities would stay off.
     """
     if len(data) < 4:
         return None
     module_byte = data[1]
-    output_zero = data[2]
+    output_byte = data[2]
     state_val = data[3]
     try:
         module = bytes([module_byte]).decode("ascii")
     except UnicodeDecodeError:
         return None
-    return StateUpdate(module=module, output=output_zero + 1, state=state_val)
+    zero = (output_byte >> 4) * 10 + (output_byte & 0x0F)
+    return StateUpdate(module=module, output=zero + 1, state=state_val)
 
 
 def build_state_frame(module: str, output: int, state: int) -> tuple[int, bytes] | None:

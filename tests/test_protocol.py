@@ -53,12 +53,47 @@ def test_parse_state_frame_non_ascii_module_returns_none():
     assert parse_state_frame(b"\x00\x80\x00\x00") is None
 
 
-def test_parse_state_frame_zero_indexed_conversion():
-    """The 0-indexed output in the frame is always incremented by 1."""
-    for zero_idx in range(12):
-        result = parse_state_frame(bytes([0x00, ord("A"), zero_idx, 0x00]))
-        assert result is not None
-        assert result.output == zero_idx + 1
+def test_parse_state_frame_bcd_output_decoding():
+    """Output bytes are BCD-decoded on inbound frames, mirroring build_state_frame.
+
+    Regression: an earlier version did a plain output_byte + 1, which routed
+    inbound frames for outputs 11 and 12 (arriving on the wire as 0x10 / 0x11
+    under BCD) to phantom outputs 17 and 18.  Their entities then stayed off
+    because the states cache was never populated under the correct key.
+    """
+    cases = [
+        (0x00, 1),
+        (0x08, 9),
+        (0x09, 10),
+        (0x10, 11),
+        (0x11, 12),
+    ]
+    for byte, expected_output in cases:
+        result = parse_state_frame(bytes([0x00, ord("A"), byte, 0x00]))
+        assert result is not None, f"byte=0x{byte:02X} returned None"
+        assert result.output == expected_output, (
+            f"byte=0x{byte:02X}: got output={result.output}, expected {expected_output}"
+        )
+
+
+def test_parse_and_build_state_frame_roundtrip():
+    """Every output 1..12 must survive an encode/decode roundtrip.
+
+    Guarantees the transmit and receive paths agree on the output number so
+    that state broadcasts DOBISS echoes for a write we sent land on the
+    same cache key the entity reads.
+    """
+    for output in range(1, 13):
+        built = build_state_frame("A", output, 0)
+        assert built is not None
+        _, payload = built
+        # Rebuild an inbound frame using the same output-byte encoding.
+        inbound = bytes([0x00, ord("A"), payload[2], 0x00])
+        parsed = parse_state_frame(inbound)
+        assert parsed is not None
+        assert parsed.output == output, (
+            f"roundtrip broke for output {output}: got {parsed.output}"
+        )
 
 
 # ---------------------------------------------------------------------------
