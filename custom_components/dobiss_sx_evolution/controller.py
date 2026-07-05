@@ -317,27 +317,47 @@ class DobissController:
     ) -> None:
         """Refresh the state cache and wait for the resulting burst to settle.
 
-        Sends a dump request and waits until the bus has been quiet for
-        `idle` seconds, or `timeout` elapses.  Progress is observed through
-        the same listener channel entities use, because the shared reader
-        is owned by the running read loop and cannot be drained directly.
-        Used by the fast-path subentry reload so newly-added entities read
-        a fresh cache instead of a stale value (which would render as off).
+        Sends a dump request, then waits until the first response frame is
+        ingested by the read loop, then drains until the bus has been quiet
+        for `idle` seconds.  `timeout` is the overall ceiling.  Used by the
+        fast-path subentry reload so newly-added entities read a fresh cache
+        instead of a stale value (which would render as off).
+
+        Progress is observed through the same listener channel entities use,
+        because the shared reader is owned by the running read loop and
+        cannot be drained directly.  We wait for the first frame explicitly
+        because DOBISS may take longer than `idle` to start responding on a
+        loaded bus, and treating "no frames yet" as "bus idle" would exit
+        before the cache is populated.
         """
         if self._bus is None:
             return
         loop = asyncio.get_running_loop()
         last_seen = loop.time()
+        first_frame = asyncio.Event()
 
         @callback
         def _bump(_key: OutputKey, _value: int) -> None:
             nonlocal last_seen
             last_seen = loop.time()
+            first_frame.set()
 
         remove = self.async_add_listener(_bump)
         try:
             await self._send_frame(*DUMP_REQUEST_FRAME)
-            deadline = loop.time() + timeout
+            start = loop.time()
+            try:
+                await asyncio.wait_for(first_frame.wait(), timeout=timeout)
+            except TimeoutError:
+                # No response at all within the deadline.  Give up and
+                # let the read loop handle any late frames as usual.  Log
+                # a warning so silent cache misses are diagnosable.
+                _LOGGER.warning(
+                    "State refresh saw no response within %.1fs; state cache may be stale",
+                    timeout,
+                )
+                return
+            deadline = start + timeout
             while True:
                 await asyncio.sleep(idle)
                 now = loop.time()

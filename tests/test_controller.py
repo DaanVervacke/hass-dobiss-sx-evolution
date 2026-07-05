@@ -213,6 +213,57 @@ async def test_async_refresh_and_settle_waits_while_updates_arrive(
     )
 
 
+async def test_async_refresh_and_settle_waits_for_first_frame(
+    hass: HomeAssistant,
+) -> None:
+    """Refresh must wait for the first response, not exit on an initial idle window.
+
+    Regression: an early version returned as soon as `idle` seconds passed
+    with no state updates, even if that was before DOBISS had had a chance
+    to start responding at all.  On a real bus with a 200-300ms round-trip
+    that meant the cache stayed empty and newly-added lights rendered off.
+    """
+    ctrl = _make_controller(hass)
+    ctrl._bus = MagicMock()
+
+    frame_delay = 0.2  # longer than idle so the naive implementation would exit
+
+    async def _delayed_frame() -> None:
+        await _real_sleep(frame_delay)
+        ctrl._apply_local(("A", 1), 1)
+
+    with patch.object(ctrl, "_send_frame", new=AsyncMock()):
+        firing = asyncio.create_task(_delayed_frame())
+        loop = asyncio.get_running_loop()
+        started = loop.time()
+        await ctrl.async_refresh_and_settle(idle=0.05, timeout=1.0)
+        elapsed = loop.time() - started
+        await firing
+
+    assert elapsed >= frame_delay, (
+        f"Refresh returned in {elapsed:.3f}s, before the first frame at "
+        f"{frame_delay}s. It must wait for at least one response frame."
+    )
+
+
+async def test_async_refresh_and_settle_gives_up_when_bus_silent(
+    hass: HomeAssistant,
+) -> None:
+    """If no response ever arrives, refresh must give up on the timeout."""
+    ctrl = _make_controller(hass)
+    ctrl._bus = MagicMock()
+
+    with patch.object(ctrl, "_send_frame", new=AsyncMock()):
+        loop = asyncio.get_running_loop()
+        started = loop.time()
+        await ctrl.async_refresh_and_settle(idle=0.05, timeout=0.15)
+        elapsed = loop.time() - started
+
+    assert 0.15 <= elapsed <= 0.35, (
+        f"Expected refresh to return around the 0.15s timeout, got {elapsed:.3f}s"
+    )
+
+
 async def test_async_refresh_and_settle_noop_when_bus_missing(
     hass: HomeAssistant,
 ) -> None:
