@@ -25,11 +25,11 @@ from .conftest import MOCK_CONFIG
 # - Per-output dict only has "type" and "name"; never has a "dimmable" key.
 
 
-def _subentry_data(*, dimmable: bool) -> dict:
+def _subentry_data(*, dimmable: bool, title: str = "Module A") -> dict:
     """Return a ConfigSubentryData dict for a module with one light output."""
     return {
         "subentry_type": SUBENTRY_TYPE_MODULE,
-        "title": "Module A",
+        "title": title,
         "unique_id": "module:A",
         "data": {
             "module": "A",
@@ -41,7 +41,9 @@ def _subentry_data(*, dimmable: bool) -> dict:
     }
 
 
-def _make_entry(hass: HomeAssistant, *, dimmable: bool) -> MockConfigEntry:
+def _make_entry(
+    hass: HomeAssistant, *, dimmable: bool, title: str = "Module A"
+) -> MockConfigEntry:
     """Build a config entry with one module subentry containing a single light output.
 
     """
@@ -54,15 +56,17 @@ def _make_entry(hass: HomeAssistant, *, dimmable: bool) -> MockConfigEntry:
         data=entry_data,
         title="DOBISS",
         version=1,
-        subentries_data=[_subentry_data(dimmable=dimmable)],
+        subentries_data=[_subentry_data(dimmable=dimmable, title=title)],
     )
     entry.add_to_hass(hass)
     return entry
 
 
-async def _setup(hass: HomeAssistant, *, dimmable: bool) -> MockConfigEntry:
+async def _setup(
+    hass: HomeAssistant, *, dimmable: bool, title: str = "Module A"
+) -> MockConfigEntry:
     """Create and load the entry, returning it after setup."""
-    entry = _make_entry(hass, dimmable=dimmable)
+    entry = _make_entry(hass, dimmable=dimmable, title=title)
 
     # Determine which list the output lands in so dimmable() returns the right value.
     output_key = ("A", 1)
@@ -117,7 +121,7 @@ async def test_dimmable_light_exposes_brightness_color_mode(
     """
     await _setup(hass, dimmable=True)
 
-    state = hass.states.get("light.sx_evo_living_room")
+    state = hass.states.get("light.sx_evo_module_a_living_room")
     assert state is not None, "Light entity was not created"
 
     assert state.attributes.get("color_mode") == ColorMode.BRIGHTNESS
@@ -132,7 +136,7 @@ async def test_non_dimmable_light_exposes_onoff_color_mode(
     """A light on a non-dimmable module must advertise ColorMode.ONOFF."""
     await _setup(hass, dimmable=False)
 
-    state = hass.states.get("light.sx_evo_living_room")
+    state = hass.states.get("light.sx_evo_module_a_living_room")
     assert state is not None, "Light entity was not created"
 
     assert state.attributes.get("color_mode") == ColorMode.ONOFF
@@ -150,15 +154,34 @@ async def test_light_entity_id_has_sx_evo_prefix(
     """
     await _setup(hass, dimmable=False)
 
-    state = hass.states.get("light.sx_evo_living_room")
-    assert state is not None, "light.sx_evo_living_room was not found"
-    # With has_entity_name=True HA prepends the device name, so the friendly
-    # name is "<device> <entity>" — neither part should carry "sx_evo_".
+    state = hass.states.get("light.sx_evo_module_a_living_room")
+    assert state is not None, "light.sx_evo_module_a_living_room was not found"
     friendly = state.attributes.get("friendly_name", "")
     assert "sx_evo_" not in friendly, (
         f"Friendly name must not carry the sx_evo_ prefix, got: {friendly!r}"
     )
-    # The old, un-prefixed entity_id must not exist.
-    assert hass.states.get("light.living_room") is None, (
-        "Un-prefixed entity_id light.living_room must not be registered"
+    assert friendly == "Module A Living Room", (
+        f"Expected friendly name 'Module A Living Room', got: {friendly!r}"
+    )
+    # Old and un-scoped entity_ids must not be registered.
+    assert hass.states.get("light.living_room") is None
+    assert hass.states.get("light.sx_evo_living_room") is None
+
+
+async def test_light_friendly_name_uses_subentry_title(
+    hass: HomeAssistant,
+) -> None:
+    """The entity friendly name is prefixed with the subentry title.
+
+    Regression guard for the fast-path reload: renaming a module subentry
+    (title change) must flow through into the entity friendly name so users
+    see their chosen module name next to the output name.
+    """
+    await _setup(hass, dimmable=False, title="Living Room Panel")
+
+    state = hass.states.get("light.sx_evo_module_a_living_room")
+    assert state is not None
+    assert state.attributes.get("friendly_name") == "Living Room Panel Living Room", (
+        f"Expected friendly name to lead with the subentry title, got: "
+        f"{state.attributes.get('friendly_name')!r}"
     )

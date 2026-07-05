@@ -46,6 +46,7 @@ async def async_setup_entry(
                     DobissShutter(
                         coordinator=coordinator,
                         module_subentry_id=subentry_id,
+                        module_title=subentry.title or f"Module {module}",
                         shutter=shutter,
                         entity_name=entity_name,
                     )
@@ -74,6 +75,7 @@ class DobissShutter(DobissEntity, CoverEntity):
         self,
         coordinator: DobissCoordinator,
         module_subentry_id: str,
+        module_title: str,
         shutter: ShutterConfig,
         entity_name: str,
     ) -> None:
@@ -86,6 +88,7 @@ class DobissShutter(DobissEntity, CoverEntity):
             platform_key=f"cover_{module}{up}",
             entity_name=entity_name,
             module=module,
+            module_title=module_title,
         )
         self._shutter = shutter
 

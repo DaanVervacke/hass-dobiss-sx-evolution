@@ -93,15 +93,15 @@ async def test_cover_entity_id_has_sx_evo_prefix(hass: HomeAssistant) -> None:
     """
     await _setup(hass)
 
-    state = hass.states.get("cover.sx_evo_living_room_blind")
-    assert state is not None, "cover.sx_evo_living_room_blind was not found"
-    # With has_entity_name=True HA prepends the device name, so the friendly
-    # name is "<device> <entity>" — neither part should carry "sx_evo_".
+    state = hass.states.get("cover.sx_evo_module_a_living_room_blind")
+    assert state is not None, "cover.sx_evo_module_a_living_room_blind was not found"
     friendly = state.attributes.get("friendly_name", "")
     assert "sx_evo_" not in friendly, (
         f"Friendly name must not carry the sx_evo_ prefix, got: {friendly!r}"
     )
-    # The old, un-prefixed entity_id must not exist.
-    assert hass.states.get("cover.living_room_blind") is None, (
-        "Un-prefixed entity_id cover.living_room_blind must not be registered"
+    assert friendly == "Module A Living Room Blind", (
+        f"Expected friendly name 'Module A Living Room Blind', got: {friendly!r}"
     )
+    # Old and un-scoped entity_ids must not be registered.
+    assert hass.states.get("cover.living_room_blind") is None
+    assert hass.states.get("cover.sx_evo_living_room_blind") is None
