@@ -278,6 +278,64 @@ def test_module_config_returns_pairs() -> None:
     assert _module_config(entry) == frozenset({("A", False), ("B", False)})
 
 
+async def test_reload_listener_title_rename_updates_device_registry(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """Renaming a module subentry must update the module device name via the fast path.
+
+    The fast path recreates entities but does not touch devices by default.
+    The listener additionally pushes the new title to the device registry so
+    the module device name stays in sync without a full bus reconnect.
+    """
+    from homeassistant.helpers import device_registry as dr
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=_make_entry_data(),
+        title="DOBISS",
+        version=1,
+        subentries_data=[_make_subentry_data("A")],
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    device_registry = dr.async_get(hass)
+    identifier = (DOMAIN, f"{entry.entry_id}_module_A")
+    device = device_registry.async_get_device(identifiers={identifier})
+    assert device is not None
+    assert device.name == "Module A"
+
+    renamed = _make_subentry_data("A")
+    renamed["title"] = "Living Room Panel"
+    updated_entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=_make_entry_data(),
+        title="DOBISS",
+        version=1,
+        entry_id=entry.entry_id,
+        subentries_data=[renamed],
+    )
+    updated_entry.runtime_data = entry.runtime_data
+
+    listener = _make_reload_listener(entry)
+    with (
+        patch.object(hass.config_entries, "async_reload", new=AsyncMock()) as full_reload,
+        patch.object(
+            hass.config_entries,
+            "async_unload_platforms",
+            new=AsyncMock(return_value=True),
+        ),
+        patch.object(hass.config_entries, "async_forward_entry_setups", new=AsyncMock()),
+    ):
+        await listener(hass, updated_entry)
+
+    assert not full_reload.called, "Rename must not trigger a full reload"
+    device = device_registry.async_get_device(identifiers={identifier})
+    assert device is not None
+    assert device.name == "Living Room Panel"
+
+
 async def test_reload_listener_dimmable_toggle_triggers_full_reload(
     hass: HomeAssistant, mock_controller
 ) -> None:

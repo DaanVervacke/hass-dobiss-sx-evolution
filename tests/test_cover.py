@@ -99,8 +99,8 @@ async def test_cover_entity_id_has_sx_evo_prefix(hass: HomeAssistant) -> None:
     assert "sx_evo_" not in friendly, (
         f"Friendly name must not carry the sx_evo_ prefix, got: {friendly!r}"
     )
-    assert friendly == "Module A Living Room Blind", (
-        f"Expected friendly name 'Module A Living Room Blind', got: {friendly!r}"
+    assert friendly == "Living Room Blind", (
+        f"Expected friendly name 'Living Room Blind' (as typed at setup), got: {friendly!r}"
     )
     # Old and un-scoped entity_ids must not be registered.
     assert hass.states.get("cover.living_room_blind") is None

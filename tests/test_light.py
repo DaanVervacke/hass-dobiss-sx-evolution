@@ -160,28 +160,53 @@ async def test_light_entity_id_has_sx_evo_prefix(
     assert "sx_evo_" not in friendly, (
         f"Friendly name must not carry the sx_evo_ prefix, got: {friendly!r}"
     )
-    assert friendly == "Module A Living Room", (
-        f"Expected friendly name 'Module A Living Room', got: {friendly!r}"
+    assert friendly == "Living Room", (
+        f"Expected friendly name 'Living Room' (as typed at setup), got: {friendly!r}"
     )
     # Old and un-scoped entity_ids must not be registered.
     assert hass.states.get("light.living_room") is None
     assert hass.states.get("light.sx_evo_living_room") is None
 
 
-async def test_light_friendly_name_uses_subentry_title(
+async def test_light_links_to_module_device_without_area(
     hass: HomeAssistant,
 ) -> None:
-    """The entity friendly name is prefixed with the subentry title.
+    """Entity links to the module device, and no area is inherited by default.
 
-    Regression guard for the fast-path reload: renaming a module subentry
-    (title change) must flow through into the entity friendly name so users
-    see their chosen module name next to the output name.
+    DOBISS modules span rooms, so the module device's area is left unset and
+    the entity has no inherited area.  This lets users assign each light to
+    its own room individually via the entity settings dialog.
+    """
+    from homeassistant.helpers import device_registry as dr, entity_registry as er
+
+    entry = await _setup(hass, dimmable=False)
+
+    entity_reg = er.async_get(hass)
+    ent = entity_reg.async_get("light.sx_evo_module_a_living_room")
+    assert ent is not None
+    assert ent.device_id is not None, "Entity must link to the module device"
+    assert ent.area_id is None, "Entity must have no default area"
+
+    device_reg = dr.async_get(hass)
+    device = device_reg.async_get(ent.device_id)
+    assert device is not None
+    assert (DOMAIN, f"{entry.entry_id}_module_A") in device.identifiers
+    assert device.area_id is None, "Module device area must stay unset"
+
+
+async def test_light_friendly_name_is_output_name_only(
+    hass: HomeAssistant,
+) -> None:
+    """The entity friendly name must be exactly the output name from setup.
+
+    The subentry title (module rename) is used for the device name but does
+    NOT get concatenated into the entity friendly name.
     """
     await _setup(hass, dimmable=False, title="Living Room Panel")
 
     state = hass.states.get("light.sx_evo_module_a_living_room")
     assert state is not None
-    assert state.attributes.get("friendly_name") == "Living Room Panel Living Room", (
-        f"Expected friendly name to lead with the subentry title, got: "
+    assert state.attributes.get("friendly_name") == "Living Room", (
+        f"Expected friendly name to be the output name only, got: "
         f"{state.attributes.get('friendly_name')!r}"
     )

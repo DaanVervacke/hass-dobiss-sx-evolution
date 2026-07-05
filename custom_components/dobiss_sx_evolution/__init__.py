@@ -50,9 +50,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: DobissConfigEntry) -> bo
 
     device_registry = dr.async_get(hass)
 
-    # Register the hub as a SERVICE device so the integration has an identity
-    # in the device registry (manufacturer, model, name).  Entities are not
-    # attached to it, but the hub still surfaces in the integration UI card.
+    # Register the hub as a SERVICE device so per-module `via_device` links resolve.
     device_registry.async_get_or_create(
         config_entry_id=entry.entry_id,
         identifiers={(DOMAIN, entry.entry_id)},
@@ -64,9 +62,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: DobissConfigEntry) -> bo
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    # No per-module device is registered: DOBISS modules span rooms, so
-    # inheriting an area from a module device would be semantically wrong.
-    # Entities stand on their own and are area-assigned individually.
+    # Register a device per module subentry so the module surfaces in the
+    # Devices UI and HA can compose "<module> <output>" friendly names.
+    # Leave the module device's area unset so entities do not inherit a
+    # room; each output can be area-assigned individually.
+    for sub in entry.subentries.values():
+        if sub.subentry_type != SUBENTRY_TYPE_MODULE:
+            continue
+        device_registry.async_get_or_create(
+            config_entry_id=entry.entry_id,
+            config_subentry_id=sub.subentry_id,
+            identifiers={(DOMAIN, f"{entry.entry_id}_module_{sub.data['module']}")},
+            manufacturer="DOBISS",
+            model="SX Evolution module",
+            name=sub.title,
+            via_device=(DOMAIN, entry.entry_id),
+        )
 
     # Reload when subentries change so platforms re-read them and
     # create/destroy entities accordingly.  _make_reload_listener snapshots
@@ -127,8 +138,10 @@ def _make_reload_listener(
     - Full reload: connection params, module set, or a module's dimmable flag
       changed (bus must reconnect or controller must rebuild output lists).
     - Platform reload: only output-level data changed (output add, remove, or
-      rename, or a subentry title rename that flows into entity friendly
-      names).  No bus reconnect is needed.
+      rename, or a subentry title rename).  Module devices are updated in
+      place in the device registry so the rename flows through to the
+      module device name and to entity friendly names via has_entity_name.
+      No bus reconnect is needed.
     """
     # Snapshot taken at setup time so the listener can diff old vs new.
     prev_conn: _ConnectionKey = _connection_key(entry)
@@ -210,6 +223,21 @@ def _make_reload_listener(
             _LOGGER.debug(
                 "State refresh failed during subentry reload", exc_info=True,
             )
+
+        # Platform re-forward only recreates entities. Push any subentry
+        # title change to the corresponding module device so the device
+        # name stays in sync without needing a full reload.
+        device_registry = dr.async_get(hass)
+        for sub in updated_entry.subentries.values():
+            if sub.subentry_type != SUBENTRY_TYPE_MODULE:
+                continue
+            identifier = (
+                DOMAIN,
+                f"{updated_entry.entry_id}_module_{sub.data[CONF_MODULE]}",
+            )
+            device = device_registry.async_get_device(identifiers={identifier})
+            if device is not None and device.name != sub.title:
+                device_registry.async_update_device(device.id, name=sub.title)
 
         await hass.config_entries.async_unload_platforms(updated_entry, PLATFORMS)
         await hass.config_entries.async_forward_entry_setups(updated_entry, PLATFORMS)

@@ -46,7 +46,6 @@ async def async_setup_entry(
                     DobissLight(
                         coordinator=coordinator,
                         module_subentry_id=subentry_id,
-                        module_title=subentry.title or f"Module {module}",
                         key=(module, output),
                         entity_name=entity_name,
                         dimmable=dimmable,
@@ -63,7 +62,6 @@ class DobissLight(DobissEntity, LightEntity):
         self,
         coordinator: DobissCoordinator,
         module_subentry_id: str,
-        module_title: str,
         key: OutputKey,
         entity_name: str,
         dimmable: bool,
@@ -76,7 +74,6 @@ class DobissLight(DobissEntity, LightEntity):
             platform_key=f"light_{module}{output}",
             entity_name=entity_name,
             module=module,
-            module_title=module_title,
         )
         self._key = key
         # Tracks the CAN-scale value we most recently wrote so we can detect

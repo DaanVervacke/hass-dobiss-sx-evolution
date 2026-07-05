@@ -1,17 +1,30 @@
 """Base entity for DOBISS SX Evolution.
 
-Entities are owned directly by their module subentry.  They do NOT link to a
-per-module HA device: DOBISS modules span rooms (a single module drives
-outputs in different physical rooms), so inheriting an area from the module
-would be semantically wrong.  Every light or shutter therefore stands on its
-own in HA and is area-assigned per entity.
+Each light or shutter belongs to a module subentry, which is represented in
+HA by a device (one device per DOBISS module).  That gives users the module
+grouping in the Devices UI.
+
+Entity naming choices:
+- has_entity_name is False so the friendly name is exactly the output name
+  the user typed at setup, without any module prefix.
+- suggested_object_id includes the module letter so entity_ids stay unique
+  across identically-named outputs on different modules.  With
+  has_entity_name False, HA uses this value as-is and does not prepend the
+  device name to it.
+
+Area assignment: DOBISS modules physically span rooms, so leave the module
+device's area unset.  Users then assign each light or cover to a room
+individually; the explicit per-entity area always wins over any device
+area inheritance.
 """
 
 from __future__ import annotations
 
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import slugify
 
+from .const import DOMAIN
 from .coordinator import DobissCoordinator
 
 
@@ -27,7 +40,6 @@ class DobissEntity(CoordinatorEntity[DobissCoordinator]):
         platform_key: str,
         entity_name: str,
         module: str,
-        module_title: str,
     ) -> None:
         """Initialize the entity.
 
@@ -37,23 +49,26 @@ class DobissEntity(CoordinatorEntity[DobissCoordinator]):
             platform_key: Unique string for this entity within its platform
                           (e.g. "light_A4" or "cover_A9"). Combined with the
                           subentry_id to form the registry unique_id.
-            entity_name:  User-facing name for the output (e.g. "Kamer Daan").
-            module:       Module letter used to keep entity_ids unique across
-                          identically-named outputs on different modules.
-            module_title: Subentry title, prepended to the friendly name for
-                          context ("Module A Kamer Daan").
+            entity_name:  User-facing name for the output (used verbatim as
+                          the friendly name).
+            module:       Module letter, used for the device link and to
+                          keep entity_ids unique across modules.
         """
         super().__init__(coordinator)
+        entry_id = coordinator.config_entry.entry_id
         self._attr_unique_id = f"{subentry_id}-{platform_key}"
-        self._attr_name = f"{module_title} {entity_name}"
+        self._attr_name = entity_name
         self._dobiss_slug = slugify(f"module_{module}_{entity_name}")
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, f"{entry_id}_module_{module}")},
+        )
 
     @property
     def suggested_object_id(self) -> str | None:
-        """Return the desired object_id, with sx_evo_ before the module slug.
+        """Return the desired object_id with the sx_evo_ prefix.
 
-        has_entity_name is False, so HA uses this value as-is (no device-name
-        prefix).  Result: light.sx_evo_module_a_kamer_daan.
+        With has_entity_name False, HA uses this value as-is without
+        prepending the device name, giving e.g. light.sx_evo_module_a_kitchen.
         """
         return f"sx_evo_{self._dobiss_slug}"
 
