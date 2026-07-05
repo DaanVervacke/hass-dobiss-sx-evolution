@@ -174,6 +174,55 @@ async def test_read_frames_reuses_existing_reader(hass: HomeAssistant) -> None:
     assert call_count >= 1
 
 
+async def test_async_refresh_and_settle_sends_dump_and_returns_on_idle(
+    hass: HomeAssistant,
+) -> None:
+    """async_refresh_and_settle sends a dump and returns once the bus goes idle."""
+    ctrl = _make_controller(hass)
+    ctrl._bus = MagicMock()
+
+    with patch.object(ctrl, "_send_frame", new=AsyncMock()) as send:
+        await ctrl.async_refresh_and_settle(idle=0.01, timeout=1.0)
+
+    from custom_components.dobiss_sx_evolution.protocol import DUMP_REQUEST_FRAME
+    send.assert_awaited_once_with(*DUMP_REQUEST_FRAME)
+
+
+async def test_async_refresh_and_settle_waits_while_updates_arrive(
+    hass: HomeAssistant,
+) -> None:
+    """The idle timer resets on each state update, so a stream keeps us waiting."""
+    ctrl = _make_controller(hass)
+    ctrl._bus = MagicMock()
+
+    async def _bump_forever(interval: float, count: int) -> None:
+        for i in range(count):
+            await _real_sleep(interval)
+            ctrl._apply_local(("A", i + 1), 1)
+
+    with patch.object(ctrl, "_send_frame", new=AsyncMock()):
+        bumper = asyncio.create_task(_bump_forever(0.01, 5))
+        loop = asyncio.get_running_loop()
+        started = loop.time()
+        await ctrl.async_refresh_and_settle(idle=0.03, timeout=1.0)
+        elapsed = loop.time() - started
+        await bumper
+
+    assert elapsed >= 0.03, (
+        "Expected refresh to wait past the idle window while updates arrived"
+    )
+
+
+async def test_async_refresh_and_settle_noop_when_bus_missing(
+    hass: HomeAssistant,
+) -> None:
+    """No dump is sent if the bus is not connected."""
+    ctrl = _make_controller(hass)
+    with patch.object(ctrl, "_send_frame", new=AsyncMock()) as send:
+        await ctrl.async_refresh_and_settle(idle=0.01, timeout=0.5)
+    send.assert_not_awaited()
+
+
 async def test_async_shutdown_stops_notifier_via_executor(hass: HomeAssistant) -> None:
     """async_shutdown must stop the notifier in the executor (non-blocking)."""
     ctrl = _make_controller(hass)

@@ -203,6 +203,18 @@ def _make_reload_listener(
         ctrl.dimmers = dimmers
         ctrl.shutters = shutters
 
+        # The fast path skips the coordinator's initial refresh, so the state
+        # cache only reflects what has been observed live since setup.  A
+        # newly-added output may never have been seen, which would render as
+        # off in HA even if the light is physically on.  Refresh the cache
+        # and wait for the burst to settle before recreating entities.
+        try:
+            await ctrl.async_refresh_and_settle()
+        except Exception:  # noqa: BLE001
+            _LOGGER.debug(
+                "State refresh failed during subentry reload", exc_info=True,
+            )
+
         # Platform re-forward only recreates entities, not devices.  Push any
         # subentry-title (module rename) change to the device registry so the
         # module device name stays in sync without needing a full reload.

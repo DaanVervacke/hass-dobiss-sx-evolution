@@ -310,6 +310,42 @@ class DobissController:
         """Send a state-dump request to the bus (triggers a full status refresh)."""
         await self._send_frame(*DUMP_REQUEST_FRAME)
 
+    async def async_refresh_and_settle(
+        self,
+        idle: float = _DUMP_DRAIN_IDLE_S,
+        timeout: float = DISCOVERY_TIMEOUT_S,
+    ) -> None:
+        """Refresh the state cache and wait for the resulting burst to settle.
+
+        Sends a dump request and waits until the bus has been quiet for
+        `idle` seconds, or `timeout` elapses.  Progress is observed through
+        the same listener channel entities use, because the shared reader
+        is owned by the running read loop and cannot be drained directly.
+        Used by the fast-path subentry reload so newly-added entities read
+        a fresh cache instead of a stale value (which would render as off).
+        """
+        if self._bus is None:
+            return
+        loop = asyncio.get_running_loop()
+        last_seen = loop.time()
+
+        @callback
+        def _bump(_key: OutputKey, _value: int) -> None:
+            nonlocal last_seen
+            last_seen = loop.time()
+
+        remove = self.async_add_listener(_bump)
+        try:
+            await self._send_frame(*DUMP_REQUEST_FRAME)
+            deadline = loop.time() + timeout
+            while True:
+                await asyncio.sleep(idle)
+                now = loop.time()
+                if now - last_seen >= idle or now >= deadline:
+                    return
+        finally:
+            remove()
+
     async def _send_state(self, module: str, output: int, value: int) -> None:
         frame = build_state_frame(module, output, value)
         if frame is None:

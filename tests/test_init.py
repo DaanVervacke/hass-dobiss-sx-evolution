@@ -175,6 +175,12 @@ async def test_reload_listener_output_only_change_skips_full_reload(
     # Platform unload and re-forward must have been called.
     assert unload_calls, "Expected async_unload_platforms to be called"
     assert forward_calls, "Expected async_forward_entry_setups to be called"
+    # The fast path must refresh the state cache before recreating entities,
+    # otherwise a newly-added output would render as off until a wall-switch
+    # event or user-invoked refresh service arrives.
+    assert mock_controller.async_refresh_and_settle.await_count == 1, (
+        "Expected async_refresh_and_settle to be awaited once on the fast path"
+    )
 
 
 async def test_reload_listener_new_module_triggers_full_reload(

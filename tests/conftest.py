@@ -68,6 +68,7 @@ def mock_controller():
     fake.async_setup = AsyncMock(return_value=None)
     fake.async_shutdown = AsyncMock(return_value=None)
     fake.async_request_dump = AsyncMock(return_value=None)
+    fake.async_refresh_and_settle = AsyncMock(return_value=None)
 
     # Listener registration returns an unsubscribe callable.
     unsubscribe = MagicMock(name="unsubscribe")
