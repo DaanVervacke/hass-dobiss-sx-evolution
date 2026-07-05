@@ -8,7 +8,15 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import device_registry as dr
 
-from .const import DOMAIN, SUBENTRY_TYPE_MODULE
+from .const import (
+    CONF_DEVICE,
+    CONF_HOST,
+    CONF_INTERFACE,
+    CONF_MODULE,
+    CONF_PORT,
+    DOMAIN,
+    SUBENTRY_TYPE_MODULE,
+)
 from .coordinator import DobissConfigEntry, DobissCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -67,9 +75,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: DobissConfigEntry) -> bo
             via_device=(DOMAIN, entry.entry_id),
         )
 
-    # Reload when subentries are added/removed/updated so platforms re-read them
-    # and create/destroy entities accordingly.
-    entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
+    # Reload when subentries change so platforms re-read them and
+    # create/destroy entities accordingly.  _make_reload_listener snapshots
+    # the current connection key and module set so the listener can diff
+    # against the new entry and choose between a full bus reconnect and a
+    # lighter platform-only reload (e.g. adding an output to an existing module).
+    entry.async_on_unload(
+        entry.add_update_listener(_make_reload_listener(entry))
+    )
 
     if not hass.services.has_service(DOMAIN, _SERVICE_REFRESH):
         hass.services.async_register(DOMAIN, _SERVICE_REFRESH, _async_handle_refresh)
@@ -77,9 +90,135 @@ async def async_setup_entry(hass: HomeAssistant, entry: DobissConfigEntry) -> bo
     return True
 
 
-async def _async_reload_entry(hass: HomeAssistant, entry: DobissConfigEntry) -> None:
-    """Reload the entry when subentries change."""
-    await hass.config_entries.async_reload(entry.entry_id)
+def _connection_key(entry: DobissConfigEntry) -> tuple:
+    """Return the parts of entry.data that identify the CAN connection."""
+    return (
+        entry.data.get("connection_type"),
+        entry.data.get(CONF_HOST),
+        entry.data.get(CONF_PORT),
+        entry.data.get(CONF_INTERFACE),
+        entry.data.get(CONF_DEVICE),
+    )
+
+
+def _module_config(entry: DobissConfigEntry) -> frozenset[tuple[str, bool]]:
+    """Return the set of (module letter, dimmable) pairs configured in subentries.
+
+    Both the module letter set AND the dimmable flag are bus-topology inputs:
+    toggling `dimmable` reclassifies every light on that module as a dimmer
+    (and vice versa), which affects the controller's `lights` vs. `dimmers`
+    output lists.  Including it in the snapshot ensures a full reload is
+    triggered when it changes.
+    """
+    return frozenset(
+        (sub.data[CONF_MODULE], bool(sub.data.get("dimmable", False)))
+        for sub in entry.subentries.values()
+        if sub.subentry_type == SUBENTRY_TYPE_MODULE
+    )
+
+
+def _make_reload_listener(
+    entry: DobissConfigEntry,
+) -> None:
+    """Return an update-listener that intelligently reloads on subentry changes.
+
+    The listener snapshots the connection key and module config at the time the
+    entry finishes setup.  When a subentry changes, it compares those snapshots
+    against the new entry to decide:
+
+    - Full reload: connection params, module set, or a module's dimmable flag
+      changed (bus must reconnect / controller must rebuild output lists).
+    - Platform reload: only output-level data changed — output add/remove,
+      output rename, or a module title (subentry.title) rename.  Module
+      devices are updated in place in the device registry, then entities are
+      recreated during the platform reload cycle and re-attach to the same
+      (now-renamed) device.  No bus reconnect is needed.
+    """
+    # Snapshot taken at setup time so the listener can diff old vs new.
+    prev_conn: tuple = _connection_key(entry)
+    prev_modules: frozenset[tuple[str, bool]] = _module_config(entry)
+
+    async def _listener(hass: HomeAssistant, updated_entry: DobissConfigEntry) -> None:
+        nonlocal prev_conn, prev_modules
+
+        new_conn = _connection_key(updated_entry)
+        new_modules = _module_config(updated_entry)
+
+        coordinator: DobissCoordinator | None = getattr(
+            updated_entry, "runtime_data", None
+        )
+
+        if coordinator is None or new_conn != prev_conn or new_modules != prev_modules:
+            # Connection or module topology changed — full reload required.
+            _LOGGER.debug(
+                "Subentry change requires full reload "
+                "(coordinator missing: %s, connection changed: %s, "
+                "modules changed: %s)",
+                coordinator is None,
+                new_conn != prev_conn,
+                new_modules != prev_modules,
+            )
+            prev_conn = new_conn
+            prev_modules = new_modules
+            await hass.config_entries.async_reload(updated_entry.entry_id)
+            return
+
+        # Only output-level data changed (names, add/remove outputs within
+        # existing modules).  Rebuild the controller's output lists and reload
+        # platforms to re-create entities without touching the bus.
+        _LOGGER.debug(
+            "Subentry change is output-only; reloading platforms without bus reconnect"
+        )
+        prev_modules = new_modules  # unchanged, but keep in sync
+
+        from .controller import OutputKey, ShutterConfig  # noqa: PLC0415
+
+        lights: list[OutputKey] = []
+        dimmers: list[OutputKey] = []
+        shutters: list[ShutterConfig] = []
+
+        for sub in updated_entry.subentries.values():
+            if sub.subentry_type != SUBENTRY_TYPE_MODULE:
+                continue
+            module: str = sub.data[CONF_MODULE]
+            module_dimmable: bool = sub.data.get("dimmable", False)
+            for output_str, cfg in sub.data.get("outputs", {}).items():
+                output = int(output_str)
+                if cfg["type"] == "light":
+                    if module_dimmable:
+                        dimmers.append((module, output))
+                    else:
+                        lights.append((module, output))
+                elif cfg["type"] == "shutter":
+                    shutters.append(
+                        ShutterConfig(
+                            module=module,
+                            up_output=output,
+                            down_output=int(cfg["down_output"]),
+                        )
+                    )
+
+        ctrl = coordinator.controller
+        ctrl.lights = lights
+        ctrl.dimmers = dimmers
+        ctrl.shutters = shutters
+
+        # Platform re-forward only recreates entities, not devices.  Push any
+        # subentry-title (module rename) change to the device registry so the
+        # module device name stays in sync without needing a full reload.
+        device_registry = dr.async_get(hass)
+        for sub in updated_entry.subentries.values():
+            if sub.subentry_type != SUBENTRY_TYPE_MODULE:
+                continue
+            identifier = (DOMAIN, f"{updated_entry.entry_id}_module_{sub.data[CONF_MODULE]}")
+            device = device_registry.async_get_device(identifiers={identifier})
+            if device is not None and device.name != sub.title:
+                device_registry.async_update_device(device.id, name=sub.title)
+
+        await hass.config_entries.async_unload_platforms(updated_entry, PLATFORMS)
+        await hass.config_entries.async_forward_entry_setups(updated_entry, PLATFORMS)
+
+    return _listener
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: DobissConfigEntry) -> bool:

@@ -44,9 +44,20 @@ class DobissEntity(CoordinatorEntity[DobissCoordinator]):
         entry_id = coordinator.config_entry.entry_id
         self._attr_unique_id = f"{subentry_id}-{platform_key}"
         self._attr_name = entity_name
+        self._dobiss_entity_name = entity_name
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, f"{entry_id}_module_{module}")},
         )
+
+    @property
+    def suggested_object_id(self) -> str | None:
+        """Return a suggested entity object id with the sx_evo_ prefix.
+
+        Overrides the default (which returns the plain entity name) so that
+        HA registers entity_ids like light.sx_evo_kitchen instead of
+        light.kitchen.  The friendly name is unaffected.
+        """
+        return f"sx_evo_{self._dobiss_entity_name}"
 
     @property
     def available(self) -> bool:

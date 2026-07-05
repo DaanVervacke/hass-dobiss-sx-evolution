@@ -117,7 +117,7 @@ async def test_dimmable_light_exposes_brightness_color_mode(
     """
     await _setup(hass, dimmable=True)
 
-    state = hass.states.get("light.living_room")
+    state = hass.states.get("light.sx_evo_living_room")
     assert state is not None, "Light entity was not created"
 
     assert state.attributes.get("color_mode") == ColorMode.BRIGHTNESS
@@ -132,9 +132,33 @@ async def test_non_dimmable_light_exposes_onoff_color_mode(
     """A light on a non-dimmable module must advertise ColorMode.ONOFF."""
     await _setup(hass, dimmable=False)
 
-    state = hass.states.get("light.living_room")
+    state = hass.states.get("light.sx_evo_living_room")
     assert state is not None, "Light entity was not created"
 
     assert state.attributes.get("color_mode") == ColorMode.ONOFF
     assert ColorMode.ONOFF in state.attributes.get("supported_color_modes", [])
     assert state.attributes.get(ATTR_BRIGHTNESS) is None
+
+
+async def test_light_entity_id_has_sx_evo_prefix(
+    hass: HomeAssistant,
+) -> None:
+    """Entity IDs for lights must be prefixed with sx_evo_.
+
+    The friendly name must remain unprefixed (e.g. "Living Room", not
+    "sx_evo_Living Room").
+    """
+    await _setup(hass, dimmable=False)
+
+    state = hass.states.get("light.sx_evo_living_room")
+    assert state is not None, "light.sx_evo_living_room was not found"
+    # With has_entity_name=True HA prepends the device name, so the friendly
+    # name is "<device> <entity>" — neither part should carry "sx_evo_".
+    friendly = state.attributes.get("friendly_name", "")
+    assert "sx_evo_" not in friendly, (
+        f"Friendly name must not carry the sx_evo_ prefix, got: {friendly!r}"
+    )
+    # The old, un-prefixed entity_id must not exist.
+    assert hass.states.get("light.living_room") is None, (
+        "Un-prefixed entity_id light.living_room must not be registered"
+    )

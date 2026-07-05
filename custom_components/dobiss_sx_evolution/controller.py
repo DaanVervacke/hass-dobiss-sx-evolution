@@ -37,6 +37,11 @@ _LOGGER = logging.getLogger(__name__)
 RECONNECT_BACKOFF_INITIAL_S = 1.0
 RECONNECT_BACKOFF_MAX_S = 60.0
 
+# After all configured modules are seen, keep draining frames until the bus
+# has been quiet for this many seconds.  DOBISS streams a tight burst after
+# DUMP_REQUEST; 150 ms of silence reliably means the burst is over.
+_DUMP_DRAIN_IDLE_S = 0.15
+
 # Fast TCP reachability check - python-can's socketcand client busy-loops for
 # 10s on a closed/unreachable port, spamming the log. We pre-check the socket
 # so we surface OSError in ~2s and skip the noisy retry loop entirely.
@@ -134,11 +139,17 @@ class DobissController:
         )
         self.states: dict[OutputKey, int] = {}
         self.reconnect_count: int = 0
+        self._entry_id: str = entry_id
         self._issue_id: str = f"cannot_connect_{entry_id}"
         self._bus: can.BusABC | None = None
         self._reader_task: asyncio.Task[None] | None = None
         self._listeners: list[Callable[[OutputKey, int], None]] = []
         self._repair_issue_active: bool = False
+        # Reader/notifier created once during setup and reused by _read_frames
+        # so there is never a gap (or a blocking notifier.stop()) between
+        # discovery and the running read loop.
+        self._reader: can.AsyncBufferedReader | None = None
+        self._notifier: can.Notifier | None = None
 
     @property
     def is_bus_connected(self) -> bool:
@@ -163,15 +174,57 @@ class DobissController:
         return _remove
 
     async def async_setup(self) -> None:
-        """Open the bus, request a state dump, then start the read loop."""
+        """Open the bus, request a state dump, then start the read loop.
+
+        The Notifier and AsyncBufferedReader are created here once (via
+        _setup_notifier) and reused by both _collect_initial_state and
+        _read_frames.  This eliminates the gap between discovery and the
+        running read loop — no frames are lost, and notifier.stop() (which
+        blocks the event loop for up to one second while it joins the reader
+        thread) is never called between the two phases.
+        """
         await self._open_bus()
+        await self._setup_notifier()
         await self._collect_initial_state()
         self._reader_task = self.hass.async_create_background_task(
             self._read_loop(), f"dobiss_sx_evolution[{self.interface}]"
         )
 
+    async def _teardown_notifier(self) -> None:
+        """Stop and discard the current notifier (executor so join doesn't block)."""
+        if self._notifier is not None:
+            notifier = self._notifier
+            self._notifier = None
+            self._reader = None
+            try:
+                await self.hass.async_add_executor_job(notifier.stop)
+            except Exception:  # noqa: BLE001
+                _LOGGER.debug("Error stopping notifier", exc_info=True)
+
+    async def _setup_notifier(self) -> None:
+        """Create a fresh AsyncBufferedReader/Notifier for the current bus.
+
+        Safe to call when self._reader/_notifier are already None (post-teardown).
+        """
+        import can  # noqa: PLC0415
+
+        if self._bus is None:
+            return
+        reader = can.AsyncBufferedReader()
+        notifier = can.Notifier(
+            self._bus,
+            [reader],
+            timeout=0.1,
+            loop=asyncio.get_running_loop(),
+        )
+        self._reader = reader
+        self._notifier = notifier
+
     async def _open_bus(self) -> None:
         """(Re-)open the CAN bus, closing the old one if any."""
+        # The notifier holds a reader-thread that keeps bus.recv() alive.
+        # Stop it before replacing the bus so the thread exits cleanly.
+        await self._teardown_notifier()
         if self._bus is not None:
             old = self._bus
             self._bus = None
@@ -202,6 +255,13 @@ class DobissController:
             with contextlib.suppress(asyncio.CancelledError):
                 await self._reader_task
             self._reader_task = None
+        # Stop the notifier via the executor so that the reader-thread join
+        # doesn't block the event loop.
+        if self._notifier is not None:
+            notifier = self._notifier
+            self._notifier = None
+            self._reader = None
+            await self.hass.async_add_executor_job(notifier.stop)
         if self._bus is not None:
             bus = self._bus
             self._bus = None
@@ -272,47 +332,53 @@ class DobissController:
             listener(key, value)
 
     async def _collect_initial_state(self) -> None:
-        """Send a dump request and collect echoes until every configured module
-        has been heard from at least once, or DISCOVERY_TIMEOUT_S elapses.
+        """Send a dump request and drain all echoed frames from the bus.
 
-        The DOBISS controller streams each module's outputs in a tight burst.
-        Once the first frame from module X arrives the rest of X's burst follows
-        within milliseconds, so waiting for a frame-per-output count is
-        unnecessarily slow.  We exit as soon as every module is represented and
-        let the background read loop absorb any trailing frames.
+        The DOBISS controller streams each module's outputs in a tight burst
+        after DUMP_REQUEST_FRAME.  We read until every configured module has
+        been seen AND the bus has been quiet for _DUMP_DRAIN_IDLE_S, so the
+        background read loop takes over a clean (empty) TCP receive buffer.
 
-        The 15-second deadline remains as a hard ceiling for unresponsive modules.
+        Using a shared AsyncBufferedReader/Notifier (created in async_setup
+        and stored on self) means:
+        - no gap between discovery and the read loop (no frames dropped), and
+        - notifier.stop() is never called here, so the event loop is never
+          blocked by the thread-join that stop() performs.
+
+        The 15-second hard deadline guards against unresponsive controllers.
         """
-        import can  # noqa: PLC0415
-
-        if self._bus is None:
+        if self._bus is None or self._reader is None:
             return
         configured_modules: set[str] = set(self.modules)
         await self._send_frame(*DUMP_REQUEST_FRAME)
 
+        reader = self._reader
         loop = asyncio.get_running_loop()
-        reader = can.AsyncBufferedReader()
-        notifier = can.Notifier(self._bus, [reader], loop=loop)
         seen_modules: set[str] = set()
-        try:
-            deadline = loop.time() + DISCOVERY_TIMEOUT_S
-            while seen_modules != configured_modules:
-                remaining = deadline - loop.time()
-                if remaining <= 0:
-                    break
-                try:
-                    msg = await asyncio.wait_for(
-                        reader.get_message(), timeout=remaining
-                    )
-                except TimeoutError:
-                    break
-                self._ingest_message(msg)
-                # Track which configured modules we have seen at least one frame from.
-                parsed = parse_state_frame(bytes(msg.data))
-                if parsed is not None and parsed.module in configured_modules:
-                    seen_modules.add(parsed.module)
-        finally:
-            notifier.stop()
+        deadline = loop.time() + DISCOVERY_TIMEOUT_S
+
+        while True:
+            # Once all modules are seen, switch to a short idle-drain window.
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                break
+            timeout = (
+                _DUMP_DRAIN_IDLE_S
+                if seen_modules >= configured_modules
+                else remaining
+            )
+            try:
+                msg = await asyncio.wait_for(
+                    reader.get_message(), timeout=min(timeout, remaining)
+                )
+            except TimeoutError:
+                # Idle timeout after all modules seen → burst is over.
+                # Hard deadline hit → warn below and hand off anyway.
+                break
+            self._ingest_message(msg)
+            parsed = parse_state_frame(bytes(msg.data))
+            if parsed is not None and parsed.module in configured_modules:
+                seen_modules.add(parsed.module)
 
         if seen_modules != configured_modules:
             missing = configured_modules - seen_modules
@@ -327,7 +393,7 @@ class DobissController:
 
     @callback
     def _raise_repair_issue(self) -> None:
-        """Create a repair issue when the CAN bus connection is persistently lost."""
+        """Create a repair issue and start a reauth flow when the CAN bus is persistently lost."""
         if self._repair_issue_active:
             return
         self._repair_issue_active = True
@@ -353,6 +419,13 @@ class DobissController:
             translation_key="cannot_connect",
             translation_placeholders=placeholders,
         )
+
+        # Surface a Repair card that jumps straight into the reconfigure flow.
+        # HA deduplicates in-progress reauth flows, so calling this when one is
+        # already active is safe.
+        entry = self.hass.config_entries.async_get_entry(self._entry_id)
+        if entry is not None:
+            entry.async_start_reauth(self.hass)
 
     @callback
     def _clear_repair_issue(self) -> None:
@@ -386,6 +459,10 @@ class DobissController:
             await asyncio.sleep(backoff)
             try:
                 await self._open_bus()
+                # _open_bus cleared self._reader/_notifier via _teardown_notifier.
+                # Re-create them now — before sending the dump — so that the
+                # echoed dump frames are captured from the first byte.
+                await self._setup_notifier()
                 # Most recent state may have drifted while we were deaf;
                 # the dump re-seeds the cache via the normal ingest path.
                 await self._send_frame(*DUMP_REQUEST_FRAME)
@@ -412,29 +489,39 @@ class DobissController:
             backoff = RECONNECT_BACKOFF_INITIAL_S
 
     async def _read_frames(self) -> None:
-        """Inner reader - drives ingest until something throws."""
-        import can  # noqa: PLC0415
+        """Inner reader - drives ingest until something throws.
 
+        On the first call after async_setup the shared reader/notifier
+        created there are used directly, so no frames are lost between
+        discovery and steady-state reading.
+
+        On subsequent calls (reconnect path) _read_loop called _setup_notifier
+        before this, so self._reader is already set.
+        """
         if self._bus is None:
             raise RuntimeError("Bus not connected")
-        reader = can.AsyncBufferedReader()
-        # Pass loop=running_loop so the Notifier dispatches listener
-        # callbacks via the event loop instead of a worker thread.
-        # Without this, AsyncBufferedReader.put_nowait() runs off-loop
-        # and frame delivery to `await reader.get_message()` lags by
-        # whole seconds at a time.
-        notifier = can.Notifier(
-            self._bus,
-            [reader],
-            timeout=0.1,
-            loop=asyncio.get_running_loop(),
-        )
+
+        # Reuse the shared reader/notifier if still alive (normal path: both
+        # the first-run case where async_setup created them, and the reconnect
+        # case where _read_loop called _setup_notifier before this).
+        # As a defensive fallback, create them here if somehow absent.
+        if self._reader is None or self._notifier is None:
+            await self._setup_notifier()
+        if self._reader is None:
+            raise RuntimeError("Could not create reader — bus unavailable")
+        reader = self._reader
+
         try:
             while True:
                 msg = await reader.get_message()
                 self._ingest_message(msg)
-        finally:
-            notifier.stop()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            # On any non-cancel error, tear down the notifier so the
+            # reconnect path in _read_loop gets a clean slate.
+            await self._teardown_notifier()
+            raise
 
     @callback
     def _ingest_message(self, msg: can.Message) -> None:
