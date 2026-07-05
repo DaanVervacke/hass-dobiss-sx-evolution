@@ -178,8 +178,9 @@ async def test_reload_listener_output_only_change_skips_full_reload(
     # The fast path must refresh the state cache before recreating entities,
     # otherwise a newly-added output would render as off until a wall-switch
     # event or user-invoked refresh service arrives.
-    assert mock_controller.async_refresh_and_settle.await_count == 1, (
-        "Expected async_refresh_and_settle to be awaited once on the fast path"
+    assert mock_controller.async_request_dump.await_count == 1, (
+        "Expected async_request_dump to be awaited once on the fast path so "
+        "the running read loop can absorb the response into the cache"
     )
 
 

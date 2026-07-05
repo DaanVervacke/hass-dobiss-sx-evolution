@@ -212,16 +212,20 @@ def _make_reload_listener(
         ctrl.dimmers = dimmers
         ctrl.shutters = shutters
 
-        # The fast path skips the coordinator's initial refresh, so the state
-        # cache only reflects what has been observed live since setup.  A
-        # newly-added output may never have been seen, which would render as
-        # off in HA even if the light is physically on.  Refresh the cache
-        # and wait for the burst to settle before recreating entities.
+        # Fire a dump request and move on.  The running read loop absorbs
+        # the response burst into the cache and pushes state changes to
+        # entities via the coordinator listener, so the newly-added entity
+        # will settle to the correct state within a fraction of a second
+        # of appearing.  We do not wait here because a blocking wait
+        # delays the platform re-forward for as long as the bus takes to
+        # respond, which showed up as "entity takes a few seconds to
+        # appear" on real hardware.
         try:
-            await ctrl.async_refresh_and_settle()
+            await ctrl.async_request_dump()
         except Exception:  # noqa: BLE001
             _LOGGER.debug(
-                "State refresh failed during subentry reload", exc_info=True,
+                "State dump request failed during subentry reload",
+                exc_info=True,
             )
 
         # Platform re-forward only recreates entities. Push any subentry
