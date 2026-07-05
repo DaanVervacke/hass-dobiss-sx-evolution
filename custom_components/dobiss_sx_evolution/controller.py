@@ -145,6 +145,15 @@ class DobissController:
         self._reader_task: asyncio.Task[None] | None = None
         self._listeners: list[Callable[[OutputKey, int], None]] = []
         self._repair_issue_active: bool = False
+        # Set by async_refresh_and_settle while it is waiting, and fired from
+        # _ingest_message on every valid inbound frame (before the state-match
+        # filter).  This lets the refresh detect the response burst even when
+        # the fresh values match the cache and would otherwise fire no
+        # state-change listeners.
+        self._frame_arrival: asyncio.Event | None = None
+        # Serialises concurrent async_refresh_and_settle calls so the second
+        # caller does not overwrite the first caller's event.
+        self._refresh_lock: asyncio.Lock = asyncio.Lock()
         # Reader/notifier created once during setup and reused by _read_frames
         # so there is never a gap (or a blocking notifier.stop()) between
         # discovery and the running read loop.
@@ -317,54 +326,61 @@ class DobissController:
     ) -> None:
         """Refresh the state cache and wait for the resulting burst to settle.
 
-        Sends a dump request, then waits until the first response frame is
-        ingested by the read loop, then drains until the bus has been quiet
-        for `idle` seconds.  `timeout` is the overall ceiling.  Used by the
-        fast-path subentry reload so newly-added entities read a fresh cache
-        instead of a stale value (which would render as off).
+        Sends a dump request, waits for the first response frame to hit the
+        read loop, then drains until no frame has arrived for `idle` seconds.
+        `timeout` is the overall ceiling.
 
-        Progress is observed through the same listener channel entities use,
-        because the shared reader is owned by the running read loop and
-        cannot be drained directly.  We wait for the first frame explicitly
-        because DOBISS may take longer than `idle` to start responding on a
-        loaded bus, and treating "no frames yet" as "bus idle" would exit
-        before the cache is populated.
+        We watch _frame_arrival (fired in _ingest_message before the
+        state-match filter) rather than the state-change listener chain:
+        DOBISS often replies with the same states we already cache, so no
+        listener would fire and the wait would sit idle the whole timeout.
+        Using the raw arrival hook lets the refresh return as soon as the
+        response actually starts and finish as soon as the burst settles.
         """
         if self._bus is None:
             return
+        async with self._refresh_lock:
+            await self._refresh_and_settle_locked(idle, timeout)
+
+    async def _refresh_and_settle_locked(
+        self, idle: float, timeout: float
+    ) -> None:
+        """Body of async_refresh_and_settle, run while the refresh lock is held."""
+        if self._bus is None:
+            return
         loop = asyncio.get_running_loop()
-        last_seen = loop.time()
-        first_frame = asyncio.Event()
-
-        @callback
-        def _bump(_key: OutputKey, _value: int) -> None:
-            nonlocal last_seen
-            last_seen = loop.time()
-            first_frame.set()
-
-        remove = self.async_add_listener(_bump)
+        arrival = asyncio.Event()
+        self._frame_arrival = arrival
         try:
             await self._send_frame(*DUMP_REQUEST_FRAME)
-            start = loop.time()
+            deadline = loop.time() + timeout
             try:
-                await asyncio.wait_for(first_frame.wait(), timeout=timeout)
+                await asyncio.wait_for(arrival.wait(), timeout=timeout)
             except TimeoutError:
                 # No response at all within the deadline.  Give up and
-                # let the read loop handle any late frames as usual.  Log
-                # a warning so silent cache misses are diagnosable.
+                # let the read loop handle any late frames as usual.
                 _LOGGER.warning(
                     "State refresh saw no response within %.1fs; state cache may be stale",
                     timeout,
                 )
                 return
-            deadline = start + timeout
+            # Drain the rest of the burst by waiting for `idle` seconds of
+            # silence.  Each new arrival re-sets the event and restarts the
+            # window.
             while True:
-                await asyncio.sleep(idle)
-                now = loop.time()
-                if now - last_seen >= idle or now >= deadline:
+                arrival.clear()
+                remaining = deadline - loop.time()
+                if remaining <= 0:
+                    return
+                try:
+                    await asyncio.wait_for(
+                        arrival.wait(), timeout=min(idle, remaining)
+                    )
+                except TimeoutError:
+                    # Idle window elapsed without new frames -> burst is over.
                     return
         finally:
-            remove()
+            self._frame_arrival = None
 
     async def _send_state(self, module: str, output: int, value: int) -> None:
         frame = build_state_frame(module, output, value)
@@ -593,6 +609,10 @@ class DobissController:
         update = parse_state_frame(bytes(msg.data))
         if update is None or update.module not in self.modules:
             return
+        # Signal the frame arrival BEFORE the state-match filter so a refresh
+        # waiter can settle even when the fresh dump matches the cache.
+        if self._frame_arrival is not None:
+            self._frame_arrival.set()
         key = (update.module, update.output)
         if self.states.get(key) == update.state:
             return

@@ -181,35 +181,74 @@ async def test_async_refresh_and_settle_sends_dump_and_returns_on_idle(
     ctrl = _make_controller(hass)
     ctrl._bus = MagicMock()
 
+    async def _one_frame() -> None:
+        await _real_sleep(0.02)
+        ctrl._ingest_message(_make_fake_message("A", 1, 1))
+
     with patch.object(ctrl, "_send_frame", new=AsyncMock()) as send:
-        await ctrl.async_refresh_and_settle(idle=0.01, timeout=1.0)
+        firing = asyncio.create_task(_one_frame())
+        await ctrl.async_refresh_and_settle(idle=0.05, timeout=1.0)
+        await firing
 
     from custom_components.dobiss_sx_evolution.protocol import DUMP_REQUEST_FRAME
     send.assert_awaited_once_with(*DUMP_REQUEST_FRAME)
 
 
+async def test_async_refresh_and_settle_settles_even_when_states_match_cache(
+    hass: HomeAssistant,
+) -> None:
+    """Refresh must return promptly even if every fresh frame matches the cache.
+
+    Regression: an earlier version watched the state-change listener chain,
+    which is only fired by _apply_local. When DOBISS replied with the same
+    states we already had, no listener fired and the refresh waited the
+    full timeout, leaving newly-added entities hanging for ~15 seconds.
+    """
+    ctrl = _make_controller(hass)
+    ctrl._bus = MagicMock()
+    ctrl.states[("A", 1)] = 1  # cache already matches the incoming frame
+
+    async def _same_state_frame() -> None:
+        await _real_sleep(0.02)
+        ctrl._ingest_message(_make_fake_message("A", 1, 1))
+
+    with patch.object(ctrl, "_send_frame", new=AsyncMock()):
+        firing = asyncio.create_task(_same_state_frame())
+        loop = asyncio.get_running_loop()
+        started = loop.time()
+        await ctrl.async_refresh_and_settle(idle=0.05, timeout=2.0)
+        elapsed = loop.time() - started
+        await firing
+
+    assert elapsed < 0.5, (
+        f"Refresh took {elapsed:.3f}s even though a frame arrived quickly. "
+        f"The arrival hook must fire even when the state matches the cache."
+    )
+
+
 async def test_async_refresh_and_settle_waits_while_updates_arrive(
     hass: HomeAssistant,
 ) -> None:
-    """The idle timer resets on each state update, so a stream keeps us waiting."""
+    """The idle timer resets on each frame arrival, so a stream keeps us waiting."""
     ctrl = _make_controller(hass)
     ctrl._bus = MagicMock()
 
-    async def _bump_forever(interval: float, count: int) -> None:
+    async def _stream_frames(interval: float, count: int) -> None:
         for i in range(count):
             await _real_sleep(interval)
-            ctrl._apply_local(("A", i + 1), 1)
+            ctrl._ingest_message(_make_fake_message("A", (i % 12) + 1, i % 2))
 
     with patch.object(ctrl, "_send_frame", new=AsyncMock()):
-        bumper = asyncio.create_task(_bump_forever(0.01, 5))
+        bumper = asyncio.create_task(_stream_frames(0.01, 5))
         loop = asyncio.get_running_loop()
         started = loop.time()
         await ctrl.async_refresh_and_settle(idle=0.03, timeout=1.0)
         elapsed = loop.time() - started
         await bumper
 
-    assert elapsed >= 0.03, (
-        "Expected refresh to wait past the idle window while updates arrived"
+    assert elapsed >= 0.05, (
+        "Expected refresh to wait through the whole frame stream, "
+        f"got {elapsed:.3f}s"
     )
 
 
@@ -230,7 +269,7 @@ async def test_async_refresh_and_settle_waits_for_first_frame(
 
     async def _delayed_frame() -> None:
         await _real_sleep(frame_delay)
-        ctrl._apply_local(("A", 1), 1)
+        ctrl._ingest_message(_make_fake_message("A", 1, 1))
 
     with patch.object(ctrl, "_send_frame", new=AsyncMock()):
         firing = asyncio.create_task(_delayed_frame())
@@ -261,6 +300,75 @@ async def test_async_refresh_and_settle_gives_up_when_bus_silent(
 
     assert 0.15 <= elapsed <= 0.35, (
         f"Expected refresh to return around the 0.15s timeout, got {elapsed:.3f}s"
+    )
+
+
+async def test_frame_arrival_hook_ignores_tx_echoes(
+    hass: HomeAssistant,
+) -> None:
+    """A tx echo frame (CAN_ID_TX_STATE) must not fire the arrival hook.
+
+    Guards against spuriously settling a refresh on the loopback of our own
+    write, which would let the refresh return before the DOBISS response
+    starts arriving.
+    """
+    from custom_components.dobiss_sx_evolution.const import CAN_ID_TX_STATE
+
+    ctrl = _make_controller(hass)
+    ctrl._frame_arrival = asyncio.Event()
+
+    echo = _make_fake_message("A", 1, 1)
+    echo.arbitration_id = CAN_ID_TX_STATE
+    ctrl._ingest_message(echo)
+
+    assert not ctrl._frame_arrival.is_set(), (
+        "Tx echoes must be filtered before the arrival hook fires"
+    )
+
+
+async def test_frame_arrival_hook_ignores_unconfigured_modules(
+    hass: HomeAssistant,
+) -> None:
+    """Frames for modules we did not configure must not fire the arrival hook."""
+    ctrl = _make_controller(hass)  # configures module "A" only
+    ctrl._frame_arrival = asyncio.Event()
+
+    stranger = _make_fake_message("B", 1, 1)
+    ctrl._ingest_message(stranger)
+
+    assert not ctrl._frame_arrival.is_set(), (
+        "Frames for unconfigured modules must not fire the arrival hook"
+    )
+
+
+async def test_async_refresh_and_settle_serialises_concurrent_calls(
+    hass: HomeAssistant,
+) -> None:
+    """Two overlapping refresh calls must not orphan each other's arrival event.
+
+    Without the refresh lock, the second call would overwrite _frame_arrival
+    and the first call's waiter would hang until its own timeout.  With the
+    lock, the second call waits until the first completes.
+    """
+    ctrl = _make_controller(hass)
+    ctrl._bus = MagicMock()
+
+    async def _feed_frames() -> None:
+        # A steady drip keeps each refresh's idle timer resetting for a bit,
+        # then goes silent so both eventually settle.
+        for i in range(3):
+            await _real_sleep(0.02)
+            ctrl._ingest_message(_make_fake_message("A", i + 1, 1))
+
+    with patch.object(ctrl, "_send_frame", new=AsyncMock()) as send:
+        feeder = asyncio.create_task(_feed_frames())
+        t1 = asyncio.create_task(ctrl.async_refresh_and_settle(idle=0.05, timeout=1.0))
+        t2 = asyncio.create_task(ctrl.async_refresh_and_settle(idle=0.05, timeout=1.0))
+        await asyncio.gather(t1, t2)
+        await feeder
+
+    assert send.await_count == 2, (
+        f"Both refresh calls must send a dump; got {send.await_count}"
     )
 
 
