@@ -117,7 +117,7 @@ class DobissCoordinator(DataUpdateCoordinator[dict[OutputKey, int]]):
         """Open the CAN bus and run initial discovery."""
         try:
             await self.controller.async_setup()
-        except OSError as err:
+        except Exception as err:
             # Build connection description for error message
             if self.controller.connection_type == CONNECTION_TYPE_SOCKETCAND:
                 conn_desc = (

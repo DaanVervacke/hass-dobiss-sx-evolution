@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import pytest
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.update_coordinator import UpdateFailed
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -51,6 +52,25 @@ async def test_coordinator_returns_states_when_bus_up(
     assert result == {("01", 1): 1, ("01", 2): 0}
     # Returned dict must be a copy, not the controller's live cache.
     assert result is not mock_controller.states
+
+
+async def test_coordinator_setup_raises_not_ready_on_non_os_error(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """_async_setup wraps non-OSError controller failures in ConfigEntryNotReady.
+
+    python-can's can.Bus() raises can.CanInitializationError, whose MRO is
+    CanInitializationError -> CanError -> Exception (not OSError), so the
+    setup catch must be broad enough to still trigger a retryable setup
+    failure instead of a permanent SETUP_ERROR.
+    """
+    entry = _make_entry(hass)
+    coordinator = DobissCoordinator(hass, entry)
+
+    mock_controller.async_setup.side_effect = Exception("CAN init failed")
+
+    with pytest.raises(ConfigEntryNotReady):
+        await coordinator._async_setup()
 
 
 async def test_coordinator_listener_invokes_update(
