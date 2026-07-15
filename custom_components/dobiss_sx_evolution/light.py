@@ -13,7 +13,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import SUBENTRY_TYPE_MODULE
+from .const import MAX_CAN_BRIGHTNESS_TX, SUBENTRY_TYPE_MODULE
 from .controller import OutputKey
 from .coordinator import DobissConfigEntry, DobissCoordinator
 from .entity import DobissEntity
@@ -130,16 +130,23 @@ class DobissLight(DobissEntity, LightEntity):
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the light on, optionally with a brightness."""
         ha_brightness: int | None = kwargs.get(ATTR_BRIGHTNESS)
-        if (
-            ha_brightness is not None
-            and self.coordinator.controller.dimmable(self._key)
-        ):
-            # Store the HA-native brightness optimistically so the slider does
-            # not snap back to the quantised round-trip value while the CAN echo
-            # is in flight.  We also record the CAN-scale value we are about to
-            # send so _handle_coordinator_update can recognise the echo as ours.
-            self._attr_brightness = ha_brightness
-            self._optimistic_can_value = ha_to_can_brightness(ha_brightness)
+        if self.coordinator.controller.dimmable(self._key):
+            if ha_brightness is not None:
+                # Store the HA-native brightness optimistically so the slider
+                # does not snap back to the quantised round-trip value while
+                # the CAN echo is in flight.  We also record the CAN-scale
+                # value we are about to send so _handle_coordinator_update can
+                # recognise the echo as ours.
+                self._attr_brightness = ha_brightness
+                self._optimistic_can_value = ha_to_can_brightness(ha_brightness)
+            else:
+                # Turning on without an explicit brightness sends the
+                # controller's "full on" CAN value (MAX_CAN_BRIGHTNESS_TX).
+                # can_to_ha_brightness() assumes the narrower RX echo range
+                # (0-90), so feeding it the TX-scale value overflows past 255.
+                # Set the optimistic HA-native brightness directly instead.
+                self._attr_brightness = 255
+                self._optimistic_can_value = MAX_CAN_BRIGHTNESS_TX
         try:
             await self.coordinator.controller.async_turn_on(
                 self._key, brightness=ha_brightness

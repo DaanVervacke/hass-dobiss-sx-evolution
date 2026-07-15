@@ -194,6 +194,32 @@ async def test_light_links_to_module_device_without_area(
     assert device.area_id is None, "Module device area must stay unset"
 
 
+async def test_turn_on_without_brightness_does_not_overflow(
+    hass: HomeAssistant,
+) -> None:
+    """Turning on a dimmer without an explicit brightness must stay in 0-255.
+
+    Regression: async_turn_on used to leave the CAN state cache holding
+    MAX_CAN_BRIGHTNESS_TX (144) after a bare turn_on with no optimistic HA
+    brightness recorded. The brightness property then fell back to
+    can_to_ha_brightness(144), which computes 144 * 255 // 90 = 408 -
+    exceeding HA's 0-255 range.
+    """
+    from homeassistant.helpers import entity_platform as ep
+
+    await _setup(hass, dimmable=True)
+
+    platforms = ep.async_get_platforms(hass, DOMAIN)
+    light_platform = next(p for p in platforms if p.domain == "light")
+    entity = light_platform.entities["light.sx_evo_module_a_living_room"]
+
+    await entity.async_turn_on()
+
+    brightness = entity.brightness
+    assert brightness is not None
+    assert 0 <= brightness <= 255, f"Brightness overflowed 0-255: {brightness!r}"
+
+
 async def test_light_friendly_name_is_output_name_only(
     hass: HomeAssistant,
 ) -> None:
