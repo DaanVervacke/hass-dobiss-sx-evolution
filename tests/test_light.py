@@ -21,7 +21,7 @@ from custom_components.dobiss_sx_evolution.const import (
     SUBENTRY_TYPE_MODULE,
 )
 
-from .conftest import MOCK_CONFIG
+from .conftest import MOCK_CONFIG, MOCK_CONNECTION
 
 # Subentry data shape as produced by async_step_add_light:
 # - "dimmable" lives at the module (subentry) level, not per-output.
@@ -77,13 +77,7 @@ async def _setup(
     lights = [] if dimmable else [output_key]
 
     fake_ctrl = MagicMock(name="DobissController")
-    fake_ctrl.connection_type = CONNECTION_TYPE_SOCKETCAND
-    fake_ctrl.host = MOCK_CONFIG["host"]
-    fake_ctrl.port = MOCK_CONFIG["port"]
-    fake_ctrl.interface = MOCK_CONFIG["interface"]
-    fake_ctrl.device = None
-    fake_ctrl.baudrate = None
-    fake_ctrl.can_interface = None
+    fake_ctrl.connection = MOCK_CONNECTION
     fake_ctrl.modules = ["A"]
     fake_ctrl.lights = lights
     fake_ctrl.dimmers = dimmers

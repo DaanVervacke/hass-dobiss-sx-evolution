@@ -16,7 +16,7 @@ from custom_components.dobiss_sx_evolution.const import (
     SUBENTRY_TYPE_MODULE,
 )
 
-from .conftest import MOCK_CONFIG
+from .conftest import MOCK_CONFIG, MOCK_CONNECTION
 
 
 def _subentry_data() -> dict:
@@ -52,13 +52,7 @@ async def _setup(hass: HomeAssistant) -> MockConfigEntry:
     entry.add_to_hass(hass)
 
     fake_ctrl = MagicMock(name="DobissController")
-    fake_ctrl.connection_type = CONNECTION_TYPE_SOCKETCAND
-    fake_ctrl.host = MOCK_CONFIG["host"]
-    fake_ctrl.port = MOCK_CONFIG["port"]
-    fake_ctrl.interface = MOCK_CONFIG["interface"]
-    fake_ctrl.device = None
-    fake_ctrl.baudrate = None
-    fake_ctrl.can_interface = None
+    fake_ctrl.connection = MOCK_CONNECTION
     fake_ctrl.modules = ["A"]
     fake_ctrl.lights = []
     fake_ctrl.dimmers = []

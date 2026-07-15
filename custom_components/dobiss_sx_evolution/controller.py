@@ -16,8 +16,6 @@ from homeassistant.helpers.issue_registry import IssueSeverity
 
 from .const import (
     CAN_ID_TX_STATE,
-    CONNECTION_TYPE_SOCKETCAND,
-    DEFAULT_BAUDRATE,
     DISCOVERY_TIMEOUT_S,
     DOMAIN,
     MAX_CAN_BRIGHTNESS_TX,
@@ -59,41 +57,87 @@ class ShutterConfig:
     down_output: int
 
 
-def make_bus_sync(host: str, port: int, interface: str) -> can.BusABC:
-    """Open and return a python-can socketcand Bus.
+@dataclass(frozen=True)
+class SocketcandConnection:
+    """Socketcand (TCP) connection parameters."""
 
-    Must be called from an executor thread.
-    """
-    import can  # noqa: PLC0415
+    host: str
+    port: int
+    interface: str
 
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
-        probe.settimeout(_TCP_PRECHECK_TIMEOUT_S)
-        probe.connect((host, port))
+    def make_bus(self) -> can.BusABC:
+        """Open and return a python-can socketcand Bus.
 
-    return can.Bus(
-        interface="socketcand",
-        channel=interface,
-        host=host,
-        port=port,
-    )
+        Must be called from an executor thread.
+        """
+        import can  # noqa: PLC0415
+
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            probe.settimeout(_TCP_PRECHECK_TIMEOUT_S)
+            probe.connect((self.host, self.port))
+
+        return can.Bus(
+            interface="socketcand",
+            channel=self.interface,
+            host=self.host,
+            port=self.port,
+        )
+
+    @property
+    def description(self) -> str:
+        """Human-readable connection description for error messages."""
+        return f"{self.host}:{self.port}/{self.interface}"
+
+    @property
+    def repair_placeholders(self) -> dict[str, str]:
+        """Translation placeholders for the cannot_connect repair issue."""
+        placeholders: dict[str, str] = {}
+        if self.host:
+            placeholders["host"] = self.host
+        if self.interface:
+            placeholders["interface"] = self.interface
+        return placeholders
 
 
-def make_bus_usb_sync(device: str, baudrate: int, interface: str) -> can.BusABC:
-    """Open and return a python-can USB Bus.
+@dataclass(frozen=True)
+class UsbConnection:
+    """USB CAN adapter (serial) connection parameters."""
 
-    Must be called from an executor thread. Raises on any failure.
+    device: str
+    baudrate: int
+    can_interface: str
 
-    Args:
-        device: Serial port device path (e.g., /dev/ttyACM0, COM3)
-        baudrate: Baud rate for serial connection
-        interface: python-can interface type (slcan, serial, etc.)
-    """
-    import can  # noqa: PLC0415
+    def make_bus(self) -> can.BusABC:
+        """Open and return a python-can USB Bus.
 
-    kwargs: dict[str, Any] = (
-        {"tty_baudrate": baudrate} if interface == "slcan" else {"baudrate": baudrate}
-    )
-    return can.Bus(interface=interface, channel=device, **kwargs)
+        Must be called from an executor thread.
+        """
+        import can  # noqa: PLC0415
+
+        kwargs: dict[str, Any] = (
+            {"tty_baudrate": self.baudrate}
+            if self.can_interface == "slcan"
+            else {"baudrate": self.baudrate}
+        )
+        return can.Bus(
+            interface=self.can_interface, channel=self.device, **kwargs
+        )
+
+    @property
+    def description(self) -> str:
+        """Human-readable connection description for error messages."""
+        return f"{self.device}@{self.baudrate}baud"
+
+    @property
+    def repair_placeholders(self) -> dict[str, str]:
+        """Translation placeholders for the cannot_connect repair issue."""
+        placeholders: dict[str, str] = {}
+        if self.device:
+            placeholders["device"] = self.device
+        return placeholders
+
+
+type ConnectionConfig = SocketcandConnection | UsbConnection
 
 
 class DobissController:
@@ -102,37 +146,15 @@ class DobissController:
     def __init__(
         self,
         hass: HomeAssistant,
-        connection_type: str,
+        connection: ConnectionConfig,
         lights: list[OutputKey],
         dimmers: list[OutputKey],
         shutters: list[ShutterConfig],
         entry_id: str = "",
-        host: str | None = None,
-        port: int | None = None,
-        interface: str | None = None,
-        device: str | None = None,
-        baudrate: int | None = None,
-        can_interface: str | None = None,
     ) -> None:
-        """Initialize the controller.
-
-        Args:
-            connection_type: Either CONNECTION_TYPE_SOCKETCAND or CONNECTION_TYPE_USB
-            host: TCP host for socketcand
-            port: TCP port for socketcand
-            interface: CAN interface name for socketcand
-            device: Serial device path for USB (e.g., /dev/ttyACM0)
-            baudrate: Baud rate for USB connection
-            can_interface: python-can interface type (slcan, serial, etc.)
-        """
+        """Initialize the controller."""
         self.hass = hass
-        self.connection_type = connection_type
-        self.host = host
-        self.port = port
-        self.interface = interface
-        self.device = device
-        self.baudrate = baudrate
-        self.can_interface = can_interface
+        self.connection = connection
         self.lights = lights
         self.dimmers = dimmers
         self.shutters = shutters
@@ -198,7 +220,7 @@ class DobissController:
         await self._setup_notifier()
         await self._collect_initial_state()
         self._reader_task = self.hass.async_create_background_task(
-            self._read_loop(), f"dobiss_sx_evolution[{self.interface}]"
+            self._read_loop(), f"dobiss_sx_evolution[{self.connection.description}]"
         )
 
     async def _teardown_notifier(self) -> None:
@@ -243,20 +265,9 @@ class DobissController:
             except Exception:  # noqa: BLE001
                 _LOGGER.debug("Error closing stale bus", exc_info=True)
 
-        if self.connection_type == CONNECTION_TYPE_SOCKETCAND:
-            self._bus = await self.hass.async_add_executor_job(
-                make_bus_sync,
-                self.host or "",
-                self.port or 0,
-                self.interface or "",
-            )
-        else:  # CONNECTION_TYPE_USB
-            self._bus = await self.hass.async_add_executor_job(
-                make_bus_usb_sync,
-                self.device or "",
-                self.baudrate or DEFAULT_BAUDRATE,
-                self.can_interface or "slcan",
-            )
+        self._bus = await self.hass.async_add_executor_job(
+            self.connection.make_bus
+        )
 
     async def async_shutdown(self) -> None:
         """Cancel the reader and close the bus."""
@@ -466,16 +477,6 @@ class DobissController:
         if self._repair_issue_active:
             return
         self._repair_issue_active = True
-        # Build placeholders based on connection type
-        placeholders: dict[str, str] = {}
-        if self.connection_type == CONNECTION_TYPE_SOCKETCAND:
-            if self.host:
-                placeholders["host"] = self.host
-            if self.interface:
-                placeholders["interface"] = self.interface
-        else:
-            if self.device:
-                placeholders["device"] = self.device
 
         ir.async_create_issue(
             self.hass,
@@ -486,7 +487,7 @@ class DobissController:
             learn_more_url="https://github.com/DaanVervacke/hass-dobiss-sx-evolution",
             severity=IssueSeverity.ERROR,
             translation_key="cannot_connect",
-            translation_placeholders=placeholders,
+            translation_placeholders=self.connection.repair_placeholders,
         )
 
         # Surface a Repair card that jumps straight into the reconfigure flow.

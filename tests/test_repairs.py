@@ -14,26 +14,23 @@ from custom_components.dobiss_sx_evolution.controller import (
     RECONNECT_BACKOFF_INITIAL_S,
     RECONNECT_BACKOFF_MAX_S,
     DobissController,
+    SocketcandConnection,
 )
 
-# Keep a reference to the real asyncio.sleep so patched fakes can still yield
-# without triggering infinite recursion when hass.async_block_till_done() calls
-# asyncio.sleep(0) through the same patch.
 _real_sleep = asyncio.sleep
+
+_TEST_CONNECTION = SocketcandConnection(
+    host="192.168.1.10", port=29536, interface="can0"
+)
 
 
 def _make_controller(
     hass: HomeAssistant, entry_id: str = "test_entry_id"
 ) -> DobissController:
     """Build a minimal DobissController with no outputs."""
-    from custom_components.dobiss_sx_evolution.const import CONNECTION_TYPE_SOCKETCAND
-
     return DobissController(
         hass,
-        connection_type=CONNECTION_TYPE_SOCKETCAND,
-        host="192.168.1.10",
-        port=29536,
-        interface="can0",
+        connection=_TEST_CONNECTION,
         lights=[],
         dimmers=[],
         shutters=[],

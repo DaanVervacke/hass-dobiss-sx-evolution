@@ -9,6 +9,7 @@ from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.core import HomeAssistant
 
 from .const import SUBENTRY_TYPE_MODULE
+from .controller import SocketcandConnection
 from .coordinator import DobissConfigEntry
 
 
@@ -41,20 +42,21 @@ async def async_get_config_entry_diagnostics(
             }
         )
 
-    if ctrl.connection_type == "socketcand":
+    conn = ctrl.connection
+    if isinstance(conn, SocketcandConnection):
         connection_info = {
             "type": "socketcand",
-            "host": ctrl.host,
-            "port": ctrl.port,
-            "can_interface": ctrl.interface,
+            "host": conn.host,
+            "port": conn.port,
+            "can_interface": conn.interface,
         }
         redact_fields = {"host"}
     else:
         connection_info = {
             "type": "usb",
-            "device": ctrl.device,
-            "baudrate": ctrl.baudrate,
-            "can_interface": ctrl.can_interface,
+            "device": conn.device,
+            "baudrate": conn.baudrate,
+            "can_interface": conn.can_interface,
         }
         redact_fields = {"device"}
 

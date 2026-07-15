@@ -7,22 +7,23 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from homeassistant.core import HomeAssistant
 
-from custom_components.dobiss_sx_evolution.const import CONNECTION_TYPE_SOCKETCAND
 from custom_components.dobiss_sx_evolution.controller import (
     DobissController,
+    SocketcandConnection,
     _DUMP_DRAIN_IDLE_S,
 )
 
 _real_sleep = asyncio.sleep
 
+_TEST_CONNECTION = SocketcandConnection(
+    host="192.168.1.10", port=29536, interface="can0"
+)
+
 
 def _make_controller(hass: HomeAssistant) -> DobissController:
     return DobissController(
         hass,
-        connection_type=CONNECTION_TYPE_SOCKETCAND,
-        host="192.168.1.10",
-        port=29536,
-        interface="can0",
+        connection=_TEST_CONNECTION,
         lights=[("A", 1)],
         dimmers=[],
         shutters=[],

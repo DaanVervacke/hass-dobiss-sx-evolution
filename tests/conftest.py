@@ -9,6 +9,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from custom_components.dobiss_sx_evolution.controller import SocketcandConnection
+
 # PHACC plugin must be declared in the ROOT conftest (this one).
 pytest_plugins = ["pytest_homeassistant_custom_component"]
 
@@ -19,6 +21,12 @@ MOCK_CONFIG = {
     "port": 29536,
     "interface": "can0",
 }
+
+MOCK_CONNECTION = SocketcandConnection(
+    host=MOCK_CONFIG["host"],
+    port=MOCK_CONFIG["port"],
+    interface=MOCK_CONFIG["interface"],
+)
 
 
 @pytest.fixture(autouse=True)
@@ -47,16 +55,8 @@ def mock_controller():
     Exposes the attributes/methods the integration touches during setup,
     teardown, and listener wiring.
     """
-    from custom_components.dobiss_sx_evolution.const import CONNECTION_TYPE_SOCKETCAND
-
     fake = MagicMock(name="DobissController")
-    fake.connection_type = CONNECTION_TYPE_SOCKETCAND
-    fake.host = MOCK_CONFIG["host"]
-    fake.port = MOCK_CONFIG["port"]
-    fake.interface = MOCK_CONFIG["interface"]
-    fake.device = None
-    fake.baudrate = None
-    fake.can_interface = None
+    fake.connection = MOCK_CONNECTION
     fake.modules = []
     fake.lights = []
     fake.dimmers = []

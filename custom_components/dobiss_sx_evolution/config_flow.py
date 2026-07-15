@@ -38,7 +38,7 @@ from .const import (
     DOMAIN,
     SUBENTRY_TYPE_MODULE,
 )
-from .controller import make_bus_sync, make_bus_usb_sync
+from .controller import ConnectionConfig, SocketcandConnection, UsbConnection
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -53,21 +53,12 @@ CONNECTION_SCHEMA = vol.Schema(
 )
 
 
-def _probe_bus_sync(host: str, port: int, interface: str) -> None:
+def _probe_bus_sync(connection: ConnectionConfig) -> None:
     """Open and immediately close the bus to validate connectivity.
 
     Must be called from an executor thread. Raises on any failure.
     """
-    bus = make_bus_sync(host, port, interface)
-    bus.shutdown()
-
-
-def _probe_bus_usb(device: str, baudrate: int, interface: str) -> None:
-    """Open and immediately close a USB CAN bus to validate connectivity.
-
-    Must be called from an executor thread. Raises on any failure.
-    """
-    bus = make_bus_usb_sync(device, baudrate, interface)
+    bus = connection.make_bus()
     bus.shutdown()
 
 
@@ -174,27 +165,21 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
                 f"{CONNECTION_TYPE_SOCKETCAND}:{user_input[CONF_HOST]}:{user_input[CONF_PORT]}/{user_input[CONF_INTERFACE]}"
             )
             self._abort_if_unique_id_configured()
+            conn = SocketcandConnection(
+                host=user_input[CONF_HOST],
+                port=user_input[CONF_PORT],
+                interface=user_input[CONF_INTERFACE],
+            )
             try:
                 await self.hass.async_add_executor_job(
-                    _probe_bus_sync,
-                    user_input[CONF_HOST],
-                    user_input[CONF_PORT],
-                    user_input[CONF_INTERFACE],
+                    _probe_bus_sync, conn
                 )
-            except OSError as err:
-                _LOGGER.debug("CAN probe failed (OSError): %s", err)
-                errors["base"] = "cannot_connect"
             except Exception as err:  # noqa: BLE001
                 _LOGGER.debug("CAN probe failed: %s", err)
                 errors["base"] = "cannot_connect"
             else:
-                title = (
-                    f"Max200 ({user_input[CONF_HOST]}:"
-                    f"{user_input[CONF_PORT]}/"
-                    f"{user_input[CONF_INTERFACE]})"
-                )
                 return self.async_create_entry(
-                    title=title,
+                    title=f"Max200 ({conn.description})",
                     data={
                         "connection_type": CONNECTION_TYPE_SOCKETCAND,
                         CONF_HOST: user_input[CONF_HOST],
@@ -227,23 +212,21 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
                 f"{CONNECTION_TYPE_USB}:{user_input[CONF_DEVICE]}"
             )
             self._abort_if_unique_id_configured()
+            conn = UsbConnection(
+                device=user_input[CONF_DEVICE],
+                baudrate=DEFAULT_BAUDRATE,
+                can_interface="slcan",
+            )
             try:
                 await self.hass.async_add_executor_job(
-                    _probe_bus_usb,
-                    user_input[CONF_DEVICE],
-                    DEFAULT_BAUDRATE,
-                    "slcan",
+                    _probe_bus_sync, conn
                 )
-            except OSError as err:
-                _LOGGER.debug("USB CAN probe failed (OSError): %s", err)
-                errors["base"] = "cannot_connect"
             except Exception as err:  # noqa: BLE001
-                _LOGGER.debug("USB CAN probe failed: %s", err)
+                _LOGGER.debug("CAN probe failed: %s", err)
                 errors["base"] = "cannot_connect"
             else:
-                title = f"Max200 ({user_input[CONF_DEVICE]})"
                 return self.async_create_entry(
-                    title=title,
+                    title=f"Max200 ({conn.description})",
                     data={
                         "connection_type": CONNECTION_TYPE_USB,
                         CONF_DEVICE: user_input[CONF_DEVICE],
@@ -300,18 +283,17 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
         entry = self._get_reauth_entry()
 
         if user_input is not None:
+            conn = SocketcandConnection(
+                host=user_input[CONF_HOST],
+                port=user_input[CONF_PORT],
+                interface=user_input[CONF_INTERFACE],
+            )
             try:
                 await self.hass.async_add_executor_job(
-                    _probe_bus_sync,
-                    user_input[CONF_HOST],
-                    user_input[CONF_PORT],
-                    user_input[CONF_INTERFACE],
+                    _probe_bus_sync, conn
                 )
-            except OSError as err:
-                _LOGGER.debug("CAN reauth probe failed (OSError): %s", err)
-                errors["base"] = "cannot_connect"
             except Exception as err:  # noqa: BLE001
-                _LOGGER.debug("CAN reauth probe failed: %s", err)
+                _LOGGER.debug("CAN probe failed: %s", err)
                 errors["base"] = "cannot_connect"
             else:
                 new_data = {
@@ -356,18 +338,17 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
         device_options = await self._build_usb_device_options()
 
         if user_input is not None:
+            conn = UsbConnection(
+                device=user_input[CONF_DEVICE],
+                baudrate=DEFAULT_BAUDRATE,
+                can_interface="slcan",
+            )
             try:
                 await self.hass.async_add_executor_job(
-                    _probe_bus_usb,
-                    user_input[CONF_DEVICE],
-                    DEFAULT_BAUDRATE,
-                    "slcan",
+                    _probe_bus_sync, conn
                 )
-            except OSError as err:
-                _LOGGER.debug("USB CAN reauth probe failed (OSError): %s", err)
-                errors["base"] = "cannot_connect"
             except Exception as err:  # noqa: BLE001
-                _LOGGER.debug("USB CAN reauth probe failed: %s", err)
+                _LOGGER.debug("CAN probe failed: %s", err)
                 errors["base"] = "cannot_connect"
             else:
                 new_data = {

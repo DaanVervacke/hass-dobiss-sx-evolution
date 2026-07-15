@@ -25,7 +25,14 @@ from .const import (
     DOMAIN,
     SUBENTRY_TYPE_MODULE,
 )
-from .controller import DobissController, OutputKey, ShutterConfig
+from .controller import (
+    ConnectionConfig,
+    DobissController,
+    OutputKey,
+    ShutterConfig,
+    SocketcandConnection,
+    UsbConnection,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -88,38 +95,28 @@ class DobissCoordinator(DataUpdateCoordinator[dict[OutputKey, int]]):
 
         lights, dimmers, shutters = parse_output_lists(entry)
 
-        # Determine connection type and extract appropriate parameters
         connection_type = entry.data.get("connection_type", CONNECTION_TYPE_SOCKETCAND)
-
+        connection: ConnectionConfig
         if connection_type == CONNECTION_TYPE_SOCKETCAND:
-            host = entry.data.get(CONF_HOST)
-            port = entry.data.get(CONF_PORT)
-            interface = entry.data.get(CONF_INTERFACE)
-            device = None
-            baudrate = None
-            can_interface = None
-        else:  # CONNECTION_TYPE_USB
-            host = None
-            port = None
-            interface = None
-            device = entry.data.get(CONF_DEVICE)
-            # For USB CAN (CANable), baudrate is always 115200 and interface is slcan
-            baudrate = DEFAULT_BAUDRATE
-            can_interface = "slcan"
+            connection = SocketcandConnection(
+                host=entry.data.get(CONF_HOST, ""),
+                port=entry.data.get(CONF_PORT, 0),
+                interface=entry.data.get(CONF_INTERFACE, ""),
+            )
+        else:
+            connection = UsbConnection(
+                device=entry.data.get(CONF_DEVICE, ""),
+                baudrate=DEFAULT_BAUDRATE,
+                can_interface="slcan",
+            )
 
         self.controller = DobissController(
             hass,
-            connection_type=connection_type,
+            connection=connection,
             lights=lights,
             dimmers=dimmers,
             shutters=shutters,
             entry_id=entry.entry_id,
-            host=host,
-            port=port,
-            interface=interface,
-            device=device,
-            baudrate=baudrate,
-            can_interface=can_interface,
         )
 
     async def _async_setup(self) -> None:
@@ -127,16 +124,9 @@ class DobissCoordinator(DataUpdateCoordinator[dict[OutputKey, int]]):
         try:
             await self.controller.async_setup()
         except Exception as err:
-            # Build connection description for error message
-            if self.controller.connection_type == CONNECTION_TYPE_SOCKETCAND:
-                conn_desc = (
-                    f"{self.controller.host}:{self.controller.port}/"
-                    f"{self.controller.interface}"
-                )
-            else:
-                conn_desc = f"{self.controller.device}@{self.controller.baudrate}baud"
             raise ConfigEntryNotReady(
-                f"Cannot open CAN connection {conn_desc}: {err}"
+                f"Cannot open CAN connection "
+                f"{self.controller.connection.description}: {err}"
             ) from err
         self.async_set_updated_data(dict(self.controller.states))
         self.config_entry.async_on_unload(
