@@ -74,6 +74,7 @@ class DobissLight(DobissEntity, LightEntity):
             platform_key=f"light_{output}",
             entity_name=entity_name,
             module=module,
+            output=output,
         )
         self._key = key
         # Tracks the CAN-scale value we most recently wrote so we can detect

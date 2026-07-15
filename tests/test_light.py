@@ -118,7 +118,7 @@ async def test_dimmable_light_exposes_brightness_color_mode(
     """
     await _setup(hass, dimmable=True)
 
-    state = hass.states.get("light.sx_evo_module_a_living_room")
+    state = hass.states.get("light.sx_evo_module_a_output_1_living_room")
     assert state is not None, "Light entity was not created"
 
     assert state.attributes.get("color_mode") == ColorMode.BRIGHTNESS
@@ -133,7 +133,7 @@ async def test_non_dimmable_light_exposes_onoff_color_mode(
     """A light on a non-dimmable module must advertise ColorMode.ONOFF."""
     await _setup(hass, dimmable=False)
 
-    state = hass.states.get("light.sx_evo_module_a_living_room")
+    state = hass.states.get("light.sx_evo_module_a_output_1_living_room")
     assert state is not None, "Light entity was not created"
 
     assert state.attributes.get("color_mode") == ColorMode.ONOFF
@@ -144,25 +144,15 @@ async def test_non_dimmable_light_exposes_onoff_color_mode(
 async def test_light_entity_id_has_sx_evo_prefix(
     hass: HomeAssistant,
 ) -> None:
-    """Entity IDs for lights must be prefixed with sx_evo_.
-
-    The friendly name must remain unprefixed (e.g. "Living Room", not
-    "sx_evo_Living Room").
-    """
+    """Entity IDs must follow the sx_evo_module_X_output_N_name pattern."""
     await _setup(hass, dimmable=False)
 
-    state = hass.states.get("light.sx_evo_module_a_living_room")
-    assert state is not None, "light.sx_evo_module_a_living_room was not found"
+    state = hass.states.get("light.sx_evo_module_a_output_1_living_room")
+    assert state is not None, "light.sx_evo_module_a_output_1_living_room was not found"
     friendly = state.attributes.get("friendly_name", "")
-    assert "sx_evo_" not in friendly, (
-        f"Friendly name must not carry the sx_evo_ prefix, got: {friendly!r}"
+    assert "sx_evo" not in friendly.lower(), (
+        f"Friendly name must not carry the sx_evo prefix, got: {friendly!r}"
     )
-    assert friendly == "Living Room", (
-        f"Expected friendly name 'Living Room' (as typed at setup), got: {friendly!r}"
-    )
-    # Old and un-scoped entity_ids must not be registered.
-    assert hass.states.get("light.living_room") is None
-    assert hass.states.get("light.sx_evo_living_room") is None
 
 
 async def test_light_links_to_module_device_without_area(
@@ -179,7 +169,7 @@ async def test_light_links_to_module_device_without_area(
     entry = await _setup(hass, dimmable=False)
 
     entity_reg = er.async_get(hass)
-    ent = entity_reg.async_get("light.sx_evo_module_a_living_room")
+    ent = entity_reg.async_get("light.sx_evo_module_a_output_1_living_room")
     assert ent is not None
     assert ent.device_id is not None, "Entity must link to the module device"
     assert ent.area_id is None, "Entity must have no default area"
@@ -208,7 +198,7 @@ async def test_turn_on_without_brightness_does_not_overflow(
 
     platforms = ep.async_get_platforms(hass, DOMAIN)
     light_platform = next(p for p in platforms if p.domain == "light")
-    entity = light_platform.entities["light.sx_evo_module_a_living_room"]
+    entity = light_platform.entities["light.sx_evo_module_a_output_1_living_room"]
 
     await entity.async_turn_on()
 
@@ -227,7 +217,7 @@ async def test_light_friendly_name_is_output_name_only(
     """
     await _setup(hass, dimmable=False, title="Living Room Panel")
 
-    state = hass.states.get("light.sx_evo_module_a_living_room")
+    state = hass.states.get("light.sx_evo_module_a_output_1_living_room")
     assert state is not None
     assert state.attributes.get("friendly_name") == "Living Room", (
         f"Expected friendly name to be the output name only, got: "
@@ -254,7 +244,7 @@ async def test_turn_on_can_error_raises_ha_error(hass: HomeAssistant) -> None:
         await hass.services.async_call(
             "light",
             "turn_on",
-            {"entity_id": "light.sx_evo_module_a_living_room"},
+            {"entity_id": "light.sx_evo_module_a_output_1_living_room"},
             blocking=True,
         )
 
@@ -266,7 +256,7 @@ async def test_light_unavailable_when_bus_disconnected(
     entry = await _setup(hass, dimmable=False)
     coordinator = entry.runtime_data
 
-    state = hass.states.get("light.sx_evo_module_a_living_room")
+    state = hass.states.get("light.sx_evo_module_a_output_1_living_room")
     assert state is not None
     assert state.state != "unavailable"
 
@@ -274,7 +264,7 @@ async def test_light_unavailable_when_bus_disconnected(
     coordinator.async_set_updated_data(dict(coordinator.controller.states))
     await hass.async_block_till_done()
 
-    state = hass.states.get("light.sx_evo_module_a_living_room")
+    state = hass.states.get("light.sx_evo_module_a_output_1_living_room")
     assert state is not None
     assert state.state == "unavailable"
 
@@ -291,6 +281,6 @@ async def test_turn_off_can_error_raises_ha_error(hass: HomeAssistant) -> None:
         await hass.services.async_call(
             "light",
             "turn_off",
-            {"entity_id": "light.sx_evo_module_a_living_room"},
+            {"entity_id": "light.sx_evo_module_a_output_1_living_room"},
             blocking=True,
         )

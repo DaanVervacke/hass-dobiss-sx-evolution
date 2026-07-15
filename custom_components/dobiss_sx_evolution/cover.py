@@ -86,6 +86,7 @@ class DobissShutter(DobissEntity, CoverEntity):
             platform_key=f"cover_{up}",
             entity_name=entity_name,
             module=module,
+            output=up,
         )
         self._shutter = shutter
 

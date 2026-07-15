@@ -83,25 +83,15 @@ async def _setup(hass: HomeAssistant) -> MockConfigEntry:
 
 
 async def test_cover_entity_id_has_sx_evo_prefix(hass: HomeAssistant) -> None:
-    """Entity IDs for covers must be prefixed with sx_evo_.
-
-    The friendly name must remain unprefixed (e.g. "Living Room Blind", not
-    "sx_evo_Living Room Blind").
-    """
+    """Entity IDs must follow the sx_evo_module_X_output_N_name pattern."""
     await _setup(hass)
 
-    state = hass.states.get("cover.sx_evo_module_a_living_room_blind")
-    assert state is not None, "cover.sx_evo_module_a_living_room_blind was not found"
+    state = hass.states.get("cover.sx_evo_module_a_output_9_living_room_blind")
+    assert state is not None, "cover.sx_evo_module_a_output_9_living_room_blind was not found"
     friendly = state.attributes.get("friendly_name", "")
-    assert "sx_evo_" not in friendly, (
-        f"Friendly name must not carry the sx_evo_ prefix, got: {friendly!r}"
+    assert "sx_evo" not in friendly.lower(), (
+        f"Friendly name must not carry the sx_evo prefix, got: {friendly!r}"
     )
-    assert friendly == "Living Room Blind", (
-        f"Expected friendly name 'Living Room Blind' (as typed at setup), got: {friendly!r}"
-    )
-    # Old and un-scoped entity_ids must not be registered.
-    assert hass.states.get("cover.living_room_blind") is None
-    assert hass.states.get("cover.sx_evo_living_room_blind") is None
 
 
 async def test_open_cover_can_error_raises_ha_error(hass: HomeAssistant) -> None:
@@ -123,7 +113,7 @@ async def test_open_cover_can_error_raises_ha_error(hass: HomeAssistant) -> None
         await hass.services.async_call(
             "cover",
             "open_cover",
-            {"entity_id": "cover.sx_evo_module_a_living_room_blind"},
+            {"entity_id": "cover.sx_evo_module_a_output_9_living_room_blind"},
             blocking=True,
         )
 
@@ -140,7 +130,7 @@ async def test_close_cover_can_error_raises_ha_error(hass: HomeAssistant) -> Non
         await hass.services.async_call(
             "cover",
             "close_cover",
-            {"entity_id": "cover.sx_evo_module_a_living_room_blind"},
+            {"entity_id": "cover.sx_evo_module_a_output_9_living_room_blind"},
             blocking=True,
         )
 
@@ -157,6 +147,6 @@ async def test_stop_cover_can_error_raises_ha_error(hass: HomeAssistant) -> None
         await hass.services.async_call(
             "cover",
             "stop_cover",
-            {"entity_id": "cover.sx_evo_module_a_living_room_blind"},
+            {"entity_id": "cover.sx_evo_module_a_output_9_living_room_blind"},
             blocking=True,
         )

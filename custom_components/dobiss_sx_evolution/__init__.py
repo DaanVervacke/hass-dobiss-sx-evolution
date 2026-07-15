@@ -64,12 +64,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: DobissConfigEntry) -> bo
         entry_type=dr.DeviceEntryType.SERVICE,
     )
 
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-
     # Register a device per module subentry so the module surfaces in the
-    # Devices UI and HA can compose "<module> <output>" friendly names.
-    # Leave the module device's area unset so entities do not inherit a
-    # room; each output can be area-assigned individually.
+    # Devices UI.  Placed before platform setup so the via_device link and
+    # device name are available when entities register.
     for sub in entry.subentries.values():
         if sub.subentry_type != SUBENTRY_TYPE_MODULE:
             continue
@@ -82,6 +79,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: DobissConfigEntry) -> bo
             name=sub.title,
             via_device=(DOMAIN, entry.entry_id),
         )
+
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     # Reload when subentries change so platforms re-read them and
     # create/destroy entities accordingly.  _make_reload_listener snapshots
