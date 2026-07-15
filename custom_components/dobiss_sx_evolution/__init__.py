@@ -204,14 +204,20 @@ def _make_reload_listener(
         await hass.config_entries.async_unload_platforms(updated_entry, PLATFORMS)
         await hass.config_entries.async_forward_entry_setups(updated_entry, PLATFORMS)
 
-        try:
-            await ctrl.async_refresh_and_settle()
-        except Exception:  # noqa: BLE001
-            _LOGGER.debug(
-                "State dump request failed during subentry reload",
-                exc_info=True,
-            )
         coordinator.async_set_updated_data(dict(ctrl.states))
+
+        async def _background_settle() -> None:
+            try:
+                await ctrl.async_refresh_and_settle()
+            except Exception:  # noqa: BLE001
+                _LOGGER.debug(
+                    "State dump request failed during subentry reload",
+                    exc_info=True,
+                )
+
+        updated_entry.async_create_background_task(
+            hass, _background_settle(), "dobiss_sx_evolution_settle"
+        )
 
     return _listener
 
