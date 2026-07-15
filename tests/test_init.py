@@ -17,6 +17,7 @@ from custom_components.dobiss_sx_evolution.__init__ import (  # noqa: PLC0415
     _connection_key,
     _make_reload_listener,
     _module_config,
+    async_remove_config_entry_device,
 )
 
 from .conftest import MOCK_CONFIG
@@ -382,3 +383,56 @@ async def test_reload_listener_dimmable_toggle_triggers_full_reload(
     assert reload_calls == [updated_entry.entry_id], (
         f"Expected full reload on dimmable toggle, got: {reload_calls}"
     )
+
+
+# ---------------------------------------------------------------------------
+# async_remove_config_entry_device tests
+# ---------------------------------------------------------------------------
+
+
+async def test_remove_device_allows_module_device(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """A module device (not the hub) may be removed once its subentry is gone."""
+    from homeassistant.helpers import device_registry as dr
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=_make_entry_data(),
+        title="DOBISS",
+        version=1,
+        subentries_data=[_make_subentry_data("A")],
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    device_registry = dr.async_get(hass)
+    module_identifier = (DOMAIN, f"{entry.entry_id}_module_A")
+    module_device = device_registry.async_get_device(identifiers={module_identifier})
+    assert module_device is not None
+
+    result = await async_remove_config_entry_device(hass, entry, module_device)
+    assert result is True
+
+
+async def test_remove_device_blocks_hub_device(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """The hub (Max200) device must never be removable via the device page."""
+    from homeassistant.helpers import device_registry as dr
+
+    entry = MockConfigEntry(
+        domain=DOMAIN, data=_make_entry_data(), title="DOBISS", version=1
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    device_registry = dr.async_get(hass)
+    hub_identifier = (DOMAIN, entry.entry_id)
+    hub_device = device_registry.async_get_device(identifiers={hub_identifier})
+    assert hub_device is not None
+
+    result = await async_remove_config_entry_device(hass, entry, hub_device)
+    assert result is False

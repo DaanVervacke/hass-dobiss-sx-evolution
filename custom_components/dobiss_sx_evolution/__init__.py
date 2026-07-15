@@ -259,3 +259,13 @@ async def async_unload_entry(hass: HomeAssistant, entry: DobissConfigEntry) -> b
         if not any(e.entry_id != entry.entry_id for e in remaining):
             hass.services.async_remove(DOMAIN, _SERVICE_REFRESH)
     return unloaded
+
+
+async def async_remove_config_entry_device(
+    hass: HomeAssistant,
+    entry: DobissConfigEntry,
+    device_entry: dr.DeviceEntry,
+) -> bool:
+    """Allow removal of orphaned module devices, but never the hub device."""
+    hub_identifier = (DOMAIN, entry.entry_id)
+    return hub_identifier not in device_entry.identifiers
