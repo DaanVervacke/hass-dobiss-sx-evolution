@@ -212,6 +212,13 @@ def _make_reload_listener(
 
         coordinator.async_set_updated_data(dict(ctrl.states))
 
+        # Request a fresh dump so new entities pick up the real hardware
+        # state instead of the (possibly stale) cache.
+        try:
+            await ctrl.async_request_dump()
+        except Exception:  # noqa: BLE001
+            _LOGGER.debug("Post-reload dump request failed", exc_info=True)
+
     return _listener
 
 
