@@ -8,8 +8,11 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from homeassistant.components.light import ATTR_BRIGHTNESS, ColorMode
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.dobiss_sx_evolution.const import (
@@ -236,3 +239,27 @@ async def test_light_friendly_name_is_output_name_only(
         f"Expected friendly name to be the output name only, got: "
         f"{state.attributes.get('friendly_name')!r}"
     )
+
+
+async def test_turn_on_can_error_raises_ha_error(hass: HomeAssistant) -> None:
+    """A CAN send failure must surface as HomeAssistantError, not a raw exception.
+
+    python-can's BusABC.send() raises can.CanOperationError, whose MRO is
+    CanOperationError -> CanError -> Exception (NOT RuntimeError). The entity
+    must catch this broadly so users see a clean HomeAssistantError instead of
+    the raw CAN exception, and so optimistic state is rolled back.
+    """
+    entry = await _setup(hass, dimmable=False)
+
+    coordinator = entry.runtime_data
+    coordinator.controller.async_turn_on = AsyncMock(
+        side_effect=Exception("CAN send failed")
+    )
+
+    with pytest.raises(HomeAssistantError):
+        await hass.services.async_call(
+            "light",
+            "turn_on",
+            {"entity_id": "light.sx_evo_module_a_living_room"},
+            blocking=True,
+        )

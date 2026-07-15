@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.dobiss_sx_evolution.const import (
@@ -105,3 +108,27 @@ async def test_cover_entity_id_has_sx_evo_prefix(hass: HomeAssistant) -> None:
     # Old and un-scoped entity_ids must not be registered.
     assert hass.states.get("cover.living_room_blind") is None
     assert hass.states.get("cover.sx_evo_living_room_blind") is None
+
+
+async def test_open_cover_can_error_raises_ha_error(hass: HomeAssistant) -> None:
+    """A CAN send failure must surface as HomeAssistantError, not a raw exception.
+
+    python-can's BusABC.send() raises can.CanOperationError, whose MRO is
+    CanOperationError -> CanError -> Exception (NOT RuntimeError). The entity
+    must catch this broadly so users see a clean HomeAssistantError instead of
+    the raw CAN exception.
+    """
+    entry = await _setup(hass)
+
+    coordinator = entry.runtime_data
+    coordinator.controller.async_open_shutter = AsyncMock(
+        side_effect=Exception("CAN send failed")
+    )
+
+    with pytest.raises(HomeAssistantError):
+        await hass.services.async_call(
+            "cover",
+            "open_cover",
+            {"entity_id": "cover.sx_evo_module_a_living_room_blind"},
+            blocking=True,
+        )

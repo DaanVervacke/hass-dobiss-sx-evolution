@@ -151,7 +151,7 @@ class DobissLight(DobissEntity, LightEntity):
             await self.coordinator.controller.async_turn_on(
                 self._key, brightness=ha_brightness
             )
-        except RuntimeError as err:
+        except Exception as err:
             self._attr_brightness = None
             self._optimistic_can_value = None
             raise HomeAssistantError(
@@ -165,7 +165,7 @@ class DobissLight(DobissEntity, LightEntity):
         self._optimistic_can_value = None
         try:
             await self.coordinator.controller.async_turn_off(self._key)
-        except RuntimeError as err:
+        except Exception as err:
             raise HomeAssistantError(
                 translation_domain="dobiss_sx_evolution",
                 translation_key="cannot_send",

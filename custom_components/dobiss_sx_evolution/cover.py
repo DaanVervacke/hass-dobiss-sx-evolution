@@ -93,7 +93,7 @@ class DobissShutter(DobissEntity, CoverEntity):
         """Open the cover."""
         try:
             await self.coordinator.controller.async_open_shutter(self._shutter)
-        except RuntimeError as err:
+        except Exception as err:
             raise HomeAssistantError(
                 translation_domain="dobiss_sx_evolution",
                 translation_key="cannot_send",
@@ -103,7 +103,7 @@ class DobissShutter(DobissEntity, CoverEntity):
         """Close the cover."""
         try:
             await self.coordinator.controller.async_close_shutter(self._shutter)
-        except RuntimeError as err:
+        except Exception as err:
             raise HomeAssistantError(
                 translation_domain="dobiss_sx_evolution",
                 translation_key="cannot_send",
@@ -113,7 +113,7 @@ class DobissShutter(DobissEntity, CoverEntity):
         """Stop the cover."""
         try:
             await self.coordinator.controller.async_stop_shutter(self._shutter)
-        except RuntimeError as err:
+        except Exception as err:
             raise HomeAssistantError(
                 translation_domain="dobiss_sx_evolution",
                 translation_key="cannot_send",
