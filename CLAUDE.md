@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-- Install dev deps: `pip install -e ".[dev]"` (Python ≥3.12, HA target `2026.6.0`).
+- Install dev deps: `pip install ".[dev]"` (Python ≥3.12, HA target `2026.6.0`).
 - Run tests: `pytest`
 - Single test: `pytest tests/test_coordinator.py::test_name -x`
 - CI runs `hacs/action` (integration) and `home-assistant/actions/hassfest` on push/PR — no local lint config, but ruff/mypy caches exist so keep code passing default ruff and mypy.
