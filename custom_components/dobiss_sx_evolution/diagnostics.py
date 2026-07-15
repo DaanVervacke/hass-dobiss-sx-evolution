@@ -11,10 +11,6 @@ from homeassistant.core import HomeAssistant
 from .const import SUBENTRY_TYPE_MODULE
 from .coordinator import DobissConfigEntry
 
-# Redact the host address before sharing: it identifies the LAN topology and
-# the socketcand daemon endpoint.  All other fields are safe to share as-is.
-_TO_REDACT: set[str] = {"host"}
-
 
 def _serialise_states(states: dict[tuple[str, int], int]) -> dict[str, int]:
     """Flatten tuple-keyed state map to JSON-safe "M<mod>O<out>" strings."""
@@ -60,7 +56,7 @@ async def async_get_config_entry_diagnostics(
             "baudrate": ctrl.baudrate,
             "can_interface": ctrl.can_interface,
         }
-        redact_fields = set()
+        redact_fields = {"device"}
 
     raw: dict[str, Any] = {
         "connection": connection_info,
