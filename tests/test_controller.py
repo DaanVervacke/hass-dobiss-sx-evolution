@@ -7,10 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from homeassistant.core import HomeAssistant
 
-from custom_components.dobiss_sx_evolution.const import (
-    CONNECTION_TYPE_SOCKETCAND,
-    DOMAIN,
-)
+from custom_components.dobiss_sx_evolution.const import CONNECTION_TYPE_SOCKETCAND
 from custom_components.dobiss_sx_evolution.controller import (
     DobissController,
     _DUMP_DRAIN_IDLE_S,
@@ -141,7 +138,6 @@ async def test_read_frames_reuses_existing_reader(hass: HomeAssistant) -> None:
     ctrl = _make_controller(hass)
     ctrl._bus = MagicMock()
 
-    cancelled = asyncio.Event()
     call_count = 0
 
     async def fake_get_message():
