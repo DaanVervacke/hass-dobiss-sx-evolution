@@ -206,9 +206,9 @@ def test_ha_to_can_brightness_midpoint():
     assert ha_to_can_brightness(128) == 80
 
 
-def test_ha_to_can_brightness_near_zero_rounds_to_zero():
-    """HA 1 → round(1*9/255)=round(0.035)=0 → 0*16=0."""
-    assert ha_to_can_brightness(1) == 0
+def test_ha_to_can_brightness_near_zero_clamps_to_minimum_step():
+    """HA 1 rounds to 0 steps, but is clamped to the minimum step (16) so turn_on never sends OFF."""
+    assert ha_to_can_brightness(1) == 16
 
 
 def test_ha_to_can_brightness_step_of_16():
@@ -216,3 +216,15 @@ def test_ha_to_can_brightness_step_of_16():
     for ha in range(256):
         result = ha_to_can_brightness(ha)
         assert result % 16 == 0, f"ha={ha} gave {result}, not a multiple of 16"
+
+
+def test_ha_to_can_brightness_zero_stays_zero():
+    """HA 0 (off) must stay 0, not be clamped up."""
+    assert ha_to_can_brightness(0) == 0
+
+
+def test_ha_to_can_brightness_positive_never_zero():
+    """Any positive HA brightness must map to at least the minimum CAN step."""
+    for ha in range(1, 256):
+        result = ha_to_can_brightness(ha)
+        assert result >= 16, f"ha={ha} gave {result}, expected >= 16"

@@ -71,5 +71,7 @@ def can_to_ha_brightness(can_state: int) -> int:
 
 def ha_to_can_brightness(ha_brightness: int) -> int:
     """Convert HA brightness (0–255) to CAN write brightness (0–144, step 16)."""
+    if ha_brightness <= 0:
+        return 0
     steps = round(ha_brightness * 9 / 255)
-    return steps * BRIGHTNESS_STEP
+    return max(1, steps) * BRIGHTNESS_STEP
