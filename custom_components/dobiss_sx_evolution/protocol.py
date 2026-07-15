@@ -66,7 +66,7 @@ DUMP_REQUEST_FRAME: tuple[int, bytes] = (CAN_ID_STATE_DUMP, b"")
 
 def can_to_ha_brightness(can_state: int) -> int:
     """Convert CAN echo brightness (0–90) to HA brightness (0–255)."""
-    return can_state * 255 // MAX_CAN_BRIGHTNESS_RX
+    return min(can_state * 255 // MAX_CAN_BRIGHTNESS_RX, 255)
 
 
 def ha_to_can_brightness(ha_brightness: int) -> int:

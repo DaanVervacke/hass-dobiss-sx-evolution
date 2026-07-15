@@ -190,6 +190,13 @@ def test_can_to_ha_brightness():
     assert can_to_ha_brightness(45) == 127
 
 
+def test_can_to_ha_brightness_clamps_to_255():
+    """Out-of-range CAN values must clamp to 255, not overflow."""
+    assert can_to_ha_brightness(144) == 255
+    assert can_to_ha_brightness(90) == 255
+    assert can_to_ha_brightness(100) == 255
+
+
 # ---------------------------------------------------------------------------
 # ha_to_can_brightness
 # ---------------------------------------------------------------------------
