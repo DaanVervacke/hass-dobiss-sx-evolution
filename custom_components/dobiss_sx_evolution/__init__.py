@@ -19,7 +19,7 @@ from .const import (
     DOMAIN,
     SUBENTRY_TYPE_MODULE,
 )
-from .coordinator import DobissConfigEntry, DobissCoordinator
+from .coordinator import DobissConfigEntry, DobissCoordinator, parse_output_lists
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -180,32 +180,7 @@ def _make_reload_listener(
         )
         prev_modules = new_modules  # unchanged, but keep in sync
 
-        from .controller import OutputKey, ShutterConfig  # noqa: PLC0415
-
-        lights: list[OutputKey] = []
-        dimmers: list[OutputKey] = []
-        shutters: list[ShutterConfig] = []
-
-        for sub in updated_entry.subentries.values():
-            if sub.subentry_type != SUBENTRY_TYPE_MODULE:
-                continue
-            module: str = sub.data[CONF_MODULE]
-            module_dimmable: bool = sub.data.get("dimmable", False)
-            for output_str, cfg in sub.data.get("outputs", {}).items():
-                output = int(output_str)
-                if cfg["type"] == "light":
-                    if module_dimmable:
-                        dimmers.append((module, output))
-                    else:
-                        lights.append((module, output))
-                elif cfg["type"] == "shutter":
-                    shutters.append(
-                        ShutterConfig(
-                            module=module,
-                            up_output=output,
-                            down_output=int(cfg["down_output"]),
-                        )
-                    )
+        lights, dimmers, shutters = parse_output_lists(updated_entry)
 
         ctrl = coordinator.controller
         ctrl.lights = lights

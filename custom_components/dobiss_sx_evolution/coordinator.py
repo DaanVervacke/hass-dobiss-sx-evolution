@@ -32,6 +32,38 @@ _LOGGER = logging.getLogger(__name__)
 type DobissConfigEntry = ConfigEntry[DobissCoordinator]
 
 
+def parse_output_lists(
+    entry: DobissConfigEntry,
+) -> tuple[list[OutputKey], list[OutputKey], list[ShutterConfig]]:
+    """Build lights, dimmers, and shutters lists from module subentries."""
+    lights: list[OutputKey] = []
+    dimmers: list[OutputKey] = []
+    shutters: list[ShutterConfig] = []
+
+    for sub in entry.subentries.values():
+        if sub.subentry_type != SUBENTRY_TYPE_MODULE:
+            continue
+        module: str = sub.data[CONF_MODULE]
+        module_dimmable: bool = sub.data.get("dimmable", False)
+        for output_str, cfg in sub.data.get("outputs", {}).items():
+            output = int(output_str)
+            if cfg["type"] == "light":
+                if module_dimmable:
+                    dimmers.append((module, output))
+                else:
+                    lights.append((module, output))
+            elif cfg["type"] == "shutter":
+                shutters.append(
+                    ShutterConfig(
+                        module=module,
+                        up_output=output,
+                        down_output=int(cfg["down_output"]),
+                    )
+                )
+
+    return lights, dimmers, shutters
+
+
 class DobissCoordinator(DataUpdateCoordinator[dict[OutputKey, int]]):
     """Coordinator exposing the controller's state cache to entities."""
 
@@ -54,30 +86,7 @@ class DobissCoordinator(DataUpdateCoordinator[dict[OutputKey, int]]):
             always_update=False,
         )
 
-        lights: list[OutputKey] = []
-        dimmers: list[OutputKey] = []
-        shutters: list[ShutterConfig] = []
-
-        for sub in entry.subentries.values():
-            if sub.subentry_type != SUBENTRY_TYPE_MODULE:
-                continue
-            module: str = sub.data[CONF_MODULE]
-            module_dimmable: bool = sub.data.get("dimmable", False)
-            for output_str, cfg in sub.data.get("outputs", {}).items():
-                output = int(output_str)
-                if cfg["type"] == "light":
-                    if module_dimmable:
-                        dimmers.append((module, output))
-                    else:
-                        lights.append((module, output))
-                elif cfg["type"] == "shutter":
-                    shutters.append(
-                        ShutterConfig(
-                            module=module,
-                            up_output=output,
-                            down_output=int(cfg["down_output"]),
-                        )
-                    )
+        lights, dimmers, shutters = parse_output_lists(entry)
 
         # Determine connection type and extract appropriate parameters
         connection_type = entry.data.get("connection_type", CONNECTION_TYPE_SOCKETCAND)
