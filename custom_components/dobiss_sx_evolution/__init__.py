@@ -187,25 +187,8 @@ def _make_reload_listener(
         ctrl.dimmers = dimmers
         ctrl.shutters = shutters
 
-        # Fire a dump request and move on.  The running read loop absorbs
-        # the response burst into the cache and pushes state changes to
-        # entities via the coordinator listener, so the newly-added entity
-        # will settle to the correct state within a fraction of a second
-        # of appearing.  We do not wait here because a blocking wait
-        # delays the platform re-forward for as long as the bus takes to
-        # respond, which showed up as "entity takes a few seconds to
-        # appear" on real hardware.
-        try:
-            await ctrl.async_request_dump()
-        except Exception:  # noqa: BLE001
-            _LOGGER.debug(
-                "State dump request failed during subentry reload",
-                exc_info=True,
-            )
-
-        # Platform re-forward only recreates entities. Push any subentry
-        # title change to the corresponding module device so the device
-        # name stays in sync without needing a full reload.
+        # Push any subentry title change to the corresponding module device
+        # so the device name stays in sync without needing a full reload.
         device_registry = dr.async_get(hass)
         for sub in updated_entry.subentries.values():
             if sub.subentry_type != SUBENTRY_TYPE_MODULE:
@@ -220,6 +203,15 @@ def _make_reload_listener(
 
         await hass.config_entries.async_unload_platforms(updated_entry, PLATFORMS)
         await hass.config_entries.async_forward_entry_setups(updated_entry, PLATFORMS)
+
+        try:
+            await ctrl.async_refresh_and_settle()
+        except Exception:  # noqa: BLE001
+            _LOGGER.debug(
+                "State dump request failed during subentry reload",
+                exc_info=True,
+            )
+        coordinator.async_set_updated_data(dict(ctrl.states))
 
     return _listener
 
