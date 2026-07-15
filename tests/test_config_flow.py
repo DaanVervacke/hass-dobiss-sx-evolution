@@ -3,9 +3,10 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import pytest
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
-from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.data_entry_flow import FlowResultType, InvalidData
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.dobiss_sx_evolution.const import (
@@ -72,6 +73,52 @@ async def test_user_flow_cannot_connect(hass: HomeAssistant) -> None:
         )
 
     assert result3["type"] == FlowResultType.FORM
+    assert result3["errors"] == {"base": "cannot_connect"}
+
+
+async def test_user_flow_rejects_invalid_port(hass: HomeAssistant, mock_probe) -> None:
+    """Port outside the 1-65535 range is rejected by schema validation."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"], user_input={"connection_type": CONNECTION_TYPE_SOCKETCAND}
+    )
+    assert result2["type"] == FlowResultType.FORM
+
+    for bad_port in (0, 99999):
+        with pytest.raises(InvalidData):
+            await hass.config_entries.flow.async_configure(
+                result2["flow_id"], user_input={**MOCK_CONFIG, "port": bad_port}
+            )
+
+    assert not mock_probe.called
+
+
+async def test_user_flow_connection_failure(hass: HomeAssistant) -> None:
+    """User flow re-renders the form with cannot_connect on a non-OSError failure.
+
+    Complements test_user_flow_cannot_connect, which covers the OSError branch;
+    this exercises the catch-all Exception branch in async_step_socketcand.
+    """
+    with patch(
+        "custom_components.dobiss_sx_evolution.config_flow._probe_bus_sync",
+        side_effect=ValueError("unexpected probe failure"),
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": config_entries.SOURCE_USER},
+        )
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={"connection_type": CONNECTION_TYPE_SOCKETCAND},
+        )
+        result3 = await hass.config_entries.flow.async_configure(
+            result2["flow_id"], user_input=MOCK_CONFIG
+        )
+
+    assert result3["type"] == FlowResultType.FORM
+    assert result3["step_id"] == "socketcand"
     assert result3["errors"] == {"base": "cannot_connect"}
 
 
@@ -185,3 +232,38 @@ async def test_reauth_flow_cannot_connect(hass: HomeAssistant) -> None:
 
     assert result2["type"] == FlowResultType.FORM
     assert result2["errors"] == {"base": "cannot_connect"}
+
+
+async def test_reauth_flow_prefills_current_values(hass: HomeAssistant) -> None:
+    """Reauth form is pre-filled with the entry's current connection details."""
+    entry_data = {
+        "connection_type": CONNECTION_TYPE_SOCKETCAND,
+        "host": "10.0.0.5",
+        "port": 1234,
+        "interface": "vcan0",
+    }
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=entry_data,
+        unique_id=f"{CONNECTION_TYPE_SOCKETCAND}:10.0.0.5:1234/vcan0",
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={
+            "source": config_entries.SOURCE_REAUTH,
+            "entry_id": entry.entry_id,
+        },
+        data=entry.data,
+    )
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "reauth_socketcand"
+
+    assert result["data_schema"] is not None
+    defaults = {
+        str(key): key.default() for key in result["data_schema"].schema
+    }
+    assert defaults["host"] == "10.0.0.5"
+    assert defaults["port"] == 1234
+    assert defaults["interface"] == "vcan0"
