@@ -266,11 +266,7 @@ class DobissController:
             self._reader_task = None
         # Stop the notifier via the executor so that the reader-thread join
         # doesn't block the event loop.
-        if self._notifier is not None:
-            notifier = self._notifier
-            self._notifier = None
-            self._reader = None
-            await self.hass.async_add_executor_job(notifier.stop)
+        await self._teardown_notifier()
         if self._bus is not None:
             bus = self._bus
             self._bus = None

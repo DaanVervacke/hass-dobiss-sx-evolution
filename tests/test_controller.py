@@ -400,3 +400,25 @@ async def test_async_shutdown_stops_notifier_via_executor(hass: HomeAssistant) -
     assert stop_calls == [1], "notifier.stop() must be called during shutdown"
     assert ctrl._notifier is None
     assert ctrl._reader is None
+
+
+async def test_async_shutdown_closes_bus_even_when_notifier_raises(
+    hass: HomeAssistant,
+) -> None:
+    """bus.shutdown() must run even if notifier.stop() raises."""
+    ctrl = _make_controller(hass)
+
+    fake_notifier = MagicMock()
+    fake_notifier.stop = MagicMock(side_effect=RuntimeError("boom"))
+    fake_bus = MagicMock()
+
+    ctrl._notifier = fake_notifier
+    ctrl._reader = MagicMock()
+    ctrl._bus = fake_bus
+
+    await ctrl.async_shutdown()
+
+    fake_bus.shutdown.assert_called_once()
+    assert ctrl._notifier is None
+    assert ctrl._reader is None
+    assert ctrl._bus is None
