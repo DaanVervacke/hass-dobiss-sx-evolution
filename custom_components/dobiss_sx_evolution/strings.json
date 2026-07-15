@@ -43,7 +43,7 @@
           "device": "Path to the serial device."
         }
       },
-      "usb": {
+      "usb_manual": {
         "title": "Connect via USB CAN adapter",
         "description": "Connect directly to a USB CAN adapter like Canable, Lawicel, or other compatible devices.",
         "data": {

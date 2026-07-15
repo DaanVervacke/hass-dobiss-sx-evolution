@@ -270,7 +270,7 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
         )
 
         return self.async_show_form(
-            step_id="usb", data_schema=schema, errors=errors
+            step_id="usb_manual", data_schema=schema, errors=errors
         )
 
     async def async_step_reauth(
