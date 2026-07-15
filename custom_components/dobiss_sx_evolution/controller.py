@@ -8,7 +8,7 @@ import logging
 import socket
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import issue_registry as ir
@@ -90,7 +90,9 @@ def make_bus_usb_sync(device: str, baudrate: int, interface: str) -> can.BusABC:
     """
     import can  # noqa: PLC0415
 
-    kwargs = {"tty_baudrate": baudrate} if interface == "slcan" else {"baudrate": baudrate}
+    kwargs: dict[str, Any] = (
+        {"tty_baudrate": baudrate} if interface == "slcan" else {"baudrate": baudrate}
+    )
     return can.Bus(interface=interface, channel=device, **kwargs)
 
 

@@ -21,6 +21,7 @@ from homeassistant.helpers.selector import (
     SelectSelectorConfig,
     SelectSelectorMode,
 )
+from homeassistant.helpers.service_info.usb import UsbServiceInfo
 
 from .const import (
     CONF_DEVICE,
@@ -153,7 +154,7 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
             if connection_type == CONNECTION_TYPE_SOCKETCAND:
                 return await self.async_step_socketcand(None)
             elif connection_type == CONNECTION_TYPE_USB:
-                return await self.async_step_usb(None)
+                return await self.async_step_usb_manual(None)
             else:
                 errors["connection_type"] = "invalid_connection_type"
 
@@ -207,6 +208,13 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_usb(
+        self, discovery_info: UsbServiceInfo
+    ) -> ConfigFlowResult:
+        """Handle USB discovery of a CAN adapter by Home Assistant core."""
+        self._discovered_usb_device = discovery_info.device
+        return await self.async_step_usb_manual(None)
+
+    async def async_step_usb_manual(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Collect USB CAN device connection details and create the entry."""
@@ -242,10 +250,17 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
                     },
                 )
 
-        # Build dynamic schema with available ports
+        # Build dynamic schema with available ports, pre-selecting the
+        # device Home Assistant discovered (if any).
+        default_device = getattr(self, "_discovered_usb_device", None)
+        device_key = (
+            vol.Required(CONF_DEVICE, default=default_device)
+            if default_device
+            else vol.Required(CONF_DEVICE)
+        )
         schema = vol.Schema(
             {
-                vol.Required(CONF_DEVICE): SelectSelector(
+                device_key: SelectSelector(
                     SelectSelectorConfig(
                         options=device_options,
                         mode=SelectSelectorMode.DROPDOWN,

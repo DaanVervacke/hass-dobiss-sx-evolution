@@ -15,6 +15,7 @@ dev = [
     "mypy>=1.15",
     "aiousbwatcher>=1.1.2",
     "pyserial>=3.5",
+    "types-pyserial>=3.5",
 ]
 
 [tool.pytest.ini_options]
