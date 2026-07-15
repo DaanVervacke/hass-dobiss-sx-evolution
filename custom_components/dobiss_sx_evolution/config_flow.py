@@ -24,6 +24,7 @@ from homeassistant.helpers.selector import (
 from homeassistant.helpers.service_info.usb import UsbServiceInfo
 
 from .const import (
+    CONF_CONNECTION_TYPE,
     CONF_DEVICE,
     CONF_HOST,
     CONF_INTERFACE,
@@ -103,7 +104,7 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
         ]
         return vol.Schema(
             {
-                vol.Required("connection_type"): SelectSelector(
+                vol.Required(CONF_CONNECTION_TYPE): SelectSelector(
                     SelectSelectorConfig(
                         options=connection_options,
                         mode=SelectSelectorMode.DROPDOWN,
@@ -141,13 +142,13 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            connection_type = user_input.get("connection_type")
+            connection_type = user_input.get(CONF_CONNECTION_TYPE)
             if connection_type == CONNECTION_TYPE_SOCKETCAND:
                 return await self.async_step_socketcand(None)
             elif connection_type == CONNECTION_TYPE_USB:
                 return await self.async_step_usb_manual(None)
             else:
-                errors["connection_type"] = "invalid_connection_type"
+                errors[CONF_CONNECTION_TYPE] = "invalid_connection_type"
 
         return self.async_show_form(
             step_id="user",
@@ -181,7 +182,7 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
                 return self.async_create_entry(
                     title=f"Max200 ({conn.description})",
                     data={
-                        "connection_type": CONNECTION_TYPE_SOCKETCAND,
+                        CONF_CONNECTION_TYPE: CONNECTION_TYPE_SOCKETCAND,
                         CONF_HOST: user_input[CONF_HOST],
                         CONF_PORT: user_input[CONF_PORT],
                         CONF_INTERFACE: user_input[CONF_INTERFACE],
@@ -228,7 +229,7 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
                 return self.async_create_entry(
                     title=f"Max200 ({conn.description})",
                     data={
-                        "connection_type": CONNECTION_TYPE_USB,
+                        CONF_CONNECTION_TYPE: CONNECTION_TYPE_USB,
                         CONF_DEVICE: user_input[CONF_DEVICE],
                     },
                 )
@@ -260,7 +261,7 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
         self, entry_data: dict[str, Any]
     ) -> ConfigFlowResult:
         """Handle re-authentication when the connection details change."""
-        connection_type = entry_data.get("connection_type", CONNECTION_TYPE_SOCKETCAND)
+        connection_type = entry_data.get(CONF_CONNECTION_TYPE, CONNECTION_TYPE_SOCKETCAND)
 
         if connection_type == CONNECTION_TYPE_SOCKETCAND:
             self._reauth_defaults = {
@@ -480,7 +481,7 @@ class ModuleSubentryFlowHandler(ConfigSubentryFlow):
             output: int = user_input["output"]
             name: str = user_input.get(CONF_NAME, "").strip()
 
-            if output < 1:
+            if output < 1 or output > 12:
                 errors["output"] = "invalid_output"
             else:
                 outputs: dict[str, Any] = dict(subentry.data.get("outputs", {}))
@@ -527,9 +528,9 @@ class ModuleSubentryFlowHandler(ConfigSubentryFlow):
             down_output: int = user_input["down_output"]
             name: str = user_input.get(CONF_NAME, "").strip()
 
-            if up_output < 1:
+            if up_output < 1 or up_output > 12:
                 errors["up_output"] = "invalid_output"
-            elif down_output < 1:
+            elif down_output < 1 or down_output > 12:
                 errors["down_output"] = "invalid_output"
             elif up_output == down_output:
                 errors["base"] = "same_output"
@@ -661,6 +662,7 @@ class ModuleSubentryFlowHandler(ConfigSubentryFlow):
                         subentry,
                         data=new_data,
                         title=title,
+                        unique_id=f"module:{module}",
                     )
 
         defaults = user_input or {

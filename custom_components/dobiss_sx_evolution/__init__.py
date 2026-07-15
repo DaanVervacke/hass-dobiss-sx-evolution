@@ -6,11 +6,13 @@ import logging
 from collections.abc import Callable, Coroutine
 from typing import Any
 
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import device_registry as dr
 
 from .const import (
+    CONF_CONNECTION_TYPE,
     CONF_DEVICE,
     CONF_HOST,
     CONF_INTERFACE,
@@ -32,6 +34,8 @@ async def _async_handle_refresh(call: ServiceCall) -> None:
     """Handle the dobiss_sx_evolution.refresh service call."""
     hass = call.hass
     for entry in hass.config_entries.async_entries(DOMAIN):
+        if entry.state is not ConfigEntryState.LOADED:
+            continue
         coordinator: DobissCoordinator = entry.runtime_data
         try:
             await coordinator.controller.async_request_dump()
@@ -102,7 +106,7 @@ type _ConnectionKey = tuple[
 def _connection_key(entry: DobissConfigEntry) -> _ConnectionKey:
     """Return the parts of entry.data that identify the CAN connection."""
     return (
-        entry.data.get("connection_type"),
+        entry.data.get(CONF_CONNECTION_TYPE),
         entry.data.get(CONF_HOST),
         entry.data.get(CONF_PORT),
         entry.data.get(CONF_INTERFACE),
@@ -186,6 +190,9 @@ def _make_reload_listener(
         ctrl.lights = lights
         ctrl.dimmers = dimmers
         ctrl.shutters = shutters
+        ctrl.modules = sorted(
+            {m for m, _ in (*lights, *dimmers)} | {s.module for s in shutters}
+        )
 
         # Push any subentry title change to the corresponding module device
         # so the device name stays in sync without needing a full reload.
@@ -205,19 +212,6 @@ def _make_reload_listener(
         await hass.config_entries.async_forward_entry_setups(updated_entry, PLATFORMS)
 
         coordinator.async_set_updated_data(dict(ctrl.states))
-
-        async def _background_settle() -> None:
-            try:
-                await ctrl.async_refresh_and_settle()
-            except Exception:  # noqa: BLE001
-                _LOGGER.debug(
-                    "State dump request failed during subentry reload",
-                    exc_info=True,
-                )
-
-        updated_entry.async_create_background_task(
-            hass, _background_settle(), "dobiss_sx_evolution_settle"
-        )
 
     return _listener
 

@@ -34,7 +34,8 @@ DEFAULT_BAUDRATE: Final = 115200
 CAN_ID_TX_STATE: Final = 0x800102  # 8_388_866 - HA → DOBISS state write
 CAN_ID_STATE_DUMP: Final = 0x800101  # 8_388_865 - request full state dump
 
-OUTPUTS_PER_MODULE: Final = 12
+CONF_CONNECTION_TYPE: Final = "connection_type"
+
 DISCOVERY_TIMEOUT_S: Final = 15.0
 
 # Brightness scaling: DOBISS echoes 0–90, accepts 0–144 in steps of 16.

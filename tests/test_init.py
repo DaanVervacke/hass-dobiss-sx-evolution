@@ -175,12 +175,12 @@ async def test_reload_listener_output_only_change_skips_full_reload(
     # Platform unload and re-forward must have been called.
     assert unload_calls, "Expected async_unload_platforms to be called"
     assert forward_calls, "Expected async_forward_entry_setups to be called"
-    # The fast path must refresh the state cache before recreating entities,
-    # otherwise a newly-added output would render as off until a wall-switch
-    # event or user-invoked refresh service arrives.
-    assert mock_controller.async_refresh_and_settle.await_count == 1, (
-        "Expected async_refresh_and_settle to be awaited once on the fast path so "
-        "the entity state cache is current before the data push"
+    # The fast path must NOT send a dump request: the DOBISS controller
+    # takes several seconds to respond to a dump, and any state write sent
+    # while the dump burst is in progress is delayed until the burst ends.
+    assert mock_controller.async_refresh_and_settle.await_count == 0, (
+        "Output-only reload must not trigger a dump; the cached state is "
+        "pushed via async_set_updated_data instead"
     )
 
 
@@ -435,3 +435,44 @@ async def test_remove_device_blocks_hub_device(
 
     result = await async_remove_config_entry_device(hass, entry, hub_device)
     assert result is False
+
+
+# ---------------------------------------------------------------------------
+# Refresh service tests
+# ---------------------------------------------------------------------------
+
+
+async def test_refresh_service_calls_dump(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """The refresh service must call async_request_dump on each loaded entry."""
+    entry = MockConfigEntry(
+        domain=DOMAIN, data=_make_entry_data(), title="DOBISS", version=1
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert hass.services.has_service(DOMAIN, "refresh")
+    await hass.services.async_call(DOMAIN, "refresh", blocking=True)
+
+    mock_controller.async_request_dump.assert_awaited_once()
+
+
+async def test_refresh_service_removed_on_last_unload(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """The refresh service must be removed when the last entry unloads."""
+    entry = MockConfigEntry(
+        domain=DOMAIN, data=_make_entry_data(), title="DOBISS", version=1
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert hass.services.has_service(DOMAIN, "refresh")
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert not hass.services.has_service(DOMAIN, "refresh")

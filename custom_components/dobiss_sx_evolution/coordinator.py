@@ -15,6 +15,7 @@ from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
+    CONF_CONNECTION_TYPE,
     CONF_DEVICE,
     CONF_HOST,
     CONF_INTERFACE,
@@ -41,10 +42,10 @@ type DobissConfigEntry = ConfigEntry[DobissCoordinator]
 
 def parse_output_lists(
     entry: DobissConfigEntry,
-) -> tuple[list[OutputKey], list[OutputKey], list[ShutterConfig]]:
+) -> tuple[list[OutputKey], set[OutputKey], list[ShutterConfig]]:
     """Build lights, dimmers, and shutters lists from module subentries."""
     lights: list[OutputKey] = []
-    dimmers: list[OutputKey] = []
+    dimmers: set[OutputKey] = set()
     shutters: list[ShutterConfig] = []
 
     for sub in entry.subentries.values():
@@ -56,7 +57,7 @@ def parse_output_lists(
             output = int(output_str)
             if cfg["type"] == "light":
                 if module_dimmable:
-                    dimmers.append((module, output))
+                    dimmers.add((module, output))
                 else:
                     lights.append((module, output))
             elif cfg["type"] == "shutter":
@@ -95,7 +96,7 @@ class DobissCoordinator(DataUpdateCoordinator[dict[OutputKey, int]]):
 
         lights, dimmers, shutters = parse_output_lists(entry)
 
-        connection_type = entry.data.get("connection_type", CONNECTION_TYPE_SOCKETCAND)
+        connection_type = entry.data.get(CONF_CONNECTION_TYPE, CONNECTION_TYPE_SOCKETCAND)
         connection: ConnectionConfig
         if connection_type == CONNECTION_TYPE_SOCKETCAND:
             connection = SocketcandConnection(

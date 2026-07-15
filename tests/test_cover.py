@@ -126,3 +126,37 @@ async def test_open_cover_can_error_raises_ha_error(hass: HomeAssistant) -> None
             {"entity_id": "cover.sx_evo_module_a_living_room_blind"},
             blocking=True,
         )
+
+
+async def test_close_cover_can_error_raises_ha_error(hass: HomeAssistant) -> None:
+    """A CAN send failure on close must surface as HomeAssistantError."""
+    entry = await _setup(hass)
+    coordinator = entry.runtime_data
+    coordinator.controller.async_close_shutter = AsyncMock(
+        side_effect=Exception("CAN send failed")
+    )
+
+    with pytest.raises(HomeAssistantError):
+        await hass.services.async_call(
+            "cover",
+            "close_cover",
+            {"entity_id": "cover.sx_evo_module_a_living_room_blind"},
+            blocking=True,
+        )
+
+
+async def test_stop_cover_can_error_raises_ha_error(hass: HomeAssistant) -> None:
+    """A CAN send failure on stop must surface as HomeAssistantError."""
+    entry = await _setup(hass)
+    coordinator = entry.runtime_data
+    coordinator.controller.async_stop_shutter = AsyncMock(
+        side_effect=Exception("CAN send failed")
+    )
+
+    with pytest.raises(HomeAssistantError):
+        await hass.services.async_call(
+            "cover",
+            "stop_cover",
+            {"entity_id": "cover.sx_evo_module_a_living_room_blind"},
+            blocking=True,
+        )

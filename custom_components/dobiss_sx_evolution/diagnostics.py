@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, is_dataclass
+from dataclasses import asdict
 from typing import Any
 
 from homeassistant.components.diagnostics import async_redact_data
@@ -66,9 +66,7 @@ async def async_get_config_entry_diagnostics(
             "modules": list(ctrl.modules),
             "lights": [list(k) for k in ctrl.lights],
             "dimmers": [list(k) for k in ctrl.dimmers],
-            "shutters": [
-                asdict(s) if is_dataclass(s) else s for s in ctrl.shutters
-            ],
+            "shutters": [asdict(s) for s in ctrl.shutters],
             "reconnect_count": ctrl.reconnect_count,
             "is_bus_connected": ctrl.is_bus_connected,
         },

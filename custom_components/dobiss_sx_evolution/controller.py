@@ -22,6 +22,7 @@ from .const import (
 )
 from .protocol import (
     DUMP_REQUEST_FRAME,
+    StateUpdate,
     build_state_frame,
     ha_to_can_brightness,
     parse_state_frame,
@@ -148,7 +149,7 @@ class DobissController:
         hass: HomeAssistant,
         connection: ConnectionConfig,
         lights: list[OutputKey],
-        dimmers: list[OutputKey],
+        dimmers: set[OutputKey],
         shutters: list[ShutterConfig],
         entry_id: str = "",
     ) -> None:
@@ -455,8 +456,7 @@ class DobissController:
                 # Idle timeout after all modules seen → burst is over.
                 # Hard deadline hit → warn below and hand off anyway.
                 break
-            self._ingest_message(msg)
-            parsed = parse_state_frame(bytes(msg.data))
+            parsed = self._ingest_message(msg)
             if parsed is not None and parsed.module in configured_modules:
                 seen_modules.add(parsed.module)
 
@@ -594,24 +594,28 @@ class DobissController:
             raise
 
     @callback
-    def _ingest_message(self, msg: can.Message) -> None:
+    def _ingest_message(self, msg: can.Message) -> StateUpdate | None:
         """Parse a CAN message and update local state if it matches an output.
 
         The DOBISS controller broadcasts ALL state updates - both dump
         responses and wall-switch presses - on arbitration ID 0x1010000.
         State writes we send on 0x800002 may echo back via SocketCAN
         loopback, so we explicitly drop those.
+
+        Returns the parsed StateUpdate (if any) so callers can reuse it
+        instead of re-parsing the same frame.
         """
         if msg.arbitration_id == CAN_ID_TX_STATE:
-            return
+            return None
         update = parse_state_frame(bytes(msg.data))
         if update is None or update.module not in self.modules:
-            return
+            return None
         # Signal the frame arrival BEFORE the state-match filter so a refresh
         # waiter can settle even when the fresh dump matches the cache.
         if self._frame_arrival is not None:
             self._frame_arrival.set()
         key = (update.module, update.output)
         if self.states.get(key) == update.state:
-            return
+            return update
         self._apply_local(key, update.state)
+        return update

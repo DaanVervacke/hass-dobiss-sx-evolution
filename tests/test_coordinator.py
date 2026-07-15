@@ -7,8 +7,15 @@ from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.update_coordinator import UpdateFailed
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.dobiss_sx_evolution.const import DOMAIN
-from custom_components.dobiss_sx_evolution.coordinator import DobissCoordinator
+from custom_components.dobiss_sx_evolution.const import (
+    DOMAIN,
+    SUBENTRY_TYPE_MODULE,
+)
+from custom_components.dobiss_sx_evolution.controller import ShutterConfig
+from custom_components.dobiss_sx_evolution.coordinator import (
+    DobissCoordinator,
+    parse_output_lists,
+)
 
 from .conftest import MOCK_CONFIG
 
@@ -87,3 +94,74 @@ async def test_coordinator_listener_invokes_update(
 
     assert coordinator.data == {("01", 1): 1}
     assert coordinator.last_update_success is True
+
+
+# ---------------------------------------------------------------------------
+# parse_output_lists
+# ---------------------------------------------------------------------------
+
+
+def test_parse_output_lists_light_on_non_dimmable_module():
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=MOCK_CONFIG,
+        subentries_data=[{
+            "subentry_type": SUBENTRY_TYPE_MODULE,
+            "title": "Module A",
+            "unique_id": "module:A",
+            "data": {
+                "module": "A",
+                "dimmable": False,
+                "outputs": {"1": {"type": "light", "name": "L1"}},
+            },
+        }],
+    )
+    lights, dimmers, shutters = parse_output_lists(entry)
+    assert ("A", 1) in lights
+    assert len(dimmers) == 0
+    assert shutters == []
+
+
+def test_parse_output_lists_dimmable_module():
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=MOCK_CONFIG,
+        subentries_data=[{
+            "subentry_type": SUBENTRY_TYPE_MODULE,
+            "title": "Module B",
+            "unique_id": "module:B",
+            "data": {
+                "module": "B",
+                "dimmable": True,
+                "outputs": {"2": {"type": "light", "name": "D1"}},
+            },
+        }],
+    )
+    lights, dimmers, shutters = parse_output_lists(entry)
+    assert lights == []
+    assert ("B", 2) in dimmers
+    assert shutters == []
+
+
+def test_parse_output_lists_shutter():
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=MOCK_CONFIG,
+        subentries_data=[{
+            "subentry_type": SUBENTRY_TYPE_MODULE,
+            "title": "Module A",
+            "unique_id": "module:A",
+            "data": {
+                "module": "A",
+                "dimmable": False,
+                "outputs": {
+                    "9": {"type": "shutter", "down_output": "10", "name": "S1"},
+                },
+            },
+        }],
+    )
+    lights, dimmers, shutters = parse_output_lists(entry)
+    assert lights == []
+    assert len(dimmers) == 0
+    assert len(shutters) == 1
+    assert shutters[0] == ShutterConfig(module="A", up_output=9, down_output=10)

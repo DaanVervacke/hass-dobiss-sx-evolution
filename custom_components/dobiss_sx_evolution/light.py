@@ -71,7 +71,7 @@ class DobissLight(DobissEntity, LightEntity):
         super().__init__(
             coordinator,
             subentry_id=module_subentry_id,
-            platform_key=f"light_{module}{output}",
+            platform_key=f"light_{output}",
             entity_name=entity_name,
             module=module,
         )

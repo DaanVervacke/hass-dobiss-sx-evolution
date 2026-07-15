@@ -83,7 +83,7 @@ class DobissShutter(DobissEntity, CoverEntity):
         super().__init__(
             coordinator,
             subentry_id=module_subentry_id,
-            platform_key=f"cover_{module}{up}",
+            platform_key=f"cover_{up}",
             entity_name=entity_name,
             module=module,
         )

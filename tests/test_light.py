@@ -257,3 +257,40 @@ async def test_turn_on_can_error_raises_ha_error(hass: HomeAssistant) -> None:
             {"entity_id": "light.sx_evo_module_a_living_room"},
             blocking=True,
         )
+
+
+async def test_light_unavailable_when_bus_disconnected(
+    hass: HomeAssistant,
+) -> None:
+    """Entity must report unavailable when the CAN bus is disconnected."""
+    entry = await _setup(hass, dimmable=False)
+    coordinator = entry.runtime_data
+
+    state = hass.states.get("light.sx_evo_module_a_living_room")
+    assert state is not None
+    assert state.state != "unavailable"
+
+    coordinator.controller.is_bus_connected = False
+    coordinator.async_set_updated_data(dict(coordinator.controller.states))
+    await hass.async_block_till_done()
+
+    state = hass.states.get("light.sx_evo_module_a_living_room")
+    assert state is not None
+    assert state.state == "unavailable"
+
+
+async def test_turn_off_can_error_raises_ha_error(hass: HomeAssistant) -> None:
+    """A CAN send failure on turn_off must surface as HomeAssistantError."""
+    entry = await _setup(hass, dimmable=False)
+    coordinator = entry.runtime_data
+    coordinator.controller.async_turn_off = AsyncMock(
+        side_effect=Exception("CAN send failed")
+    )
+
+    with pytest.raises(HomeAssistantError):
+        await hass.services.async_call(
+            "light",
+            "turn_off",
+            {"entity_id": "light.sx_evo_module_a_living_room"},
+            blocking=True,
+        )
