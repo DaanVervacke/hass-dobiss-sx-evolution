@@ -52,6 +52,37 @@
         "data_description": {
           "device": "Path to the serial device. On Linux: /dev/ttyACM0, /dev/ttyUSB0. On Windows: COM3, COM4, etc."
         }
+      },
+      "reconfigure": {
+        "title": "Reconfigure connection",
+        "description": "Update how Home Assistant connects to your DOBISS SX Evolution CAN bus.",
+        "data": {
+          "connection_type": "Connection type"
+        }
+      },
+      "reconfigure_socketcand": {
+        "title": "Reconfigure socketcand connection",
+        "description": "Update the socketcand connection details for the DOBISS SX Evolution CAN bus.",
+        "data": {
+          "host": "socketcand host",
+          "port": "socketcand port",
+          "interface": "CAN interface"
+        },
+        "data_description": {
+          "host": "Hostname or IP address of the machine running socketcand.",
+          "port": "TCP port socketcand is listening on (default 29536).",
+          "interface": "Name of the CAN interface on the socketcand host (typically can0)."
+        }
+      },
+      "reconfigure_usb": {
+        "title": "Reconfigure USB connection",
+        "description": "Update the USB CAN adapter connection details for the DOBISS SX Evolution CAN bus.",
+        "data": {
+          "device": "Device path"
+        },
+        "data_description": {
+          "device": "Path to the serial device."
+        }
       }
     },
     "error": {
@@ -65,6 +96,7 @@
     "abort": {
       "already_configured": "This DOBISS connection is already set up in Home Assistant.",
       "reauth_successful": "Reconnected to the DOBISS CAN bus.",
+      "reconfigure_successful": "[%key:common::config_flow::abort::reconfigure_successful%]",
       "no_outputs_to_remove": "This module doesn't have any outputs to remove yet."
     }
   },

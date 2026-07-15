@@ -325,6 +325,108 @@ async def test_reauth_flow_prefills_current_values(hass: HomeAssistant) -> None:
     assert defaults["interface"] == "vcan0"
 
 
+async def test_reconfigure_socketcand_success(
+    hass: HomeAssistant, mock_probe
+) -> None:
+    """Reconfigure flow updates connection params and reloads."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={"connection_type": CONNECTION_TYPE_SOCKETCAND, **MOCK_CONFIG},
+        unique_id=f"{CONNECTION_TYPE_SOCKETCAND}:{MOCK_CONFIG['host']}:{MOCK_CONFIG['port']}/{MOCK_CONFIG['interface']}",
+    )
+    entry.add_to_hass(hass)
+
+    result = await entry.start_reconfigure_flow(hass)
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "reconfigure"
+
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={"connection_type": CONNECTION_TYPE_SOCKETCAND},
+    )
+    assert result2["type"] == FlowResultType.FORM
+    assert result2["step_id"] == "reconfigure_socketcand"
+
+    new_config = {**MOCK_CONFIG, "host": "10.0.0.99"}
+    with patch(
+        "custom_components.dobiss_sx_evolution.async_setup_entry",
+        return_value=True,
+    ):
+        result3 = await hass.config_entries.flow.async_configure(
+            result2["flow_id"], user_input=new_config
+        )
+        await hass.async_block_till_done()
+
+    assert result3["type"] == FlowResultType.ABORT
+    assert result3["reason"] == "reconfigure_successful"
+    assert entry.data["host"] == "10.0.0.99"
+
+
+async def test_reconfigure_cannot_connect(
+    hass: HomeAssistant,
+) -> None:
+    """Reconfigure flow shows error on probe failure."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={"connection_type": CONNECTION_TYPE_SOCKETCAND, **MOCK_CONFIG},
+        unique_id=f"{CONNECTION_TYPE_SOCKETCAND}:{MOCK_CONFIG['host']}:{MOCK_CONFIG['port']}/{MOCK_CONFIG['interface']}",
+    )
+    entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.dobiss_sx_evolution.config_flow._probe_bus_sync",
+        side_effect=OSError("timeout"),
+    ):
+        result = await entry.start_reconfigure_flow(hass)
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={"connection_type": CONNECTION_TYPE_SOCKETCAND},
+        )
+        result3 = await hass.config_entries.flow.async_configure(
+            result2["flow_id"], user_input=MOCK_CONFIG
+        )
+
+    assert result3["type"] == FlowResultType.FORM
+    assert result3["errors"] == {"base": "cannot_connect"}
+
+
+async def test_reconfigure_usb_success(
+    hass: HomeAssistant, mock_probe, mock_usb_ports
+) -> None:
+    """Reconfigure flow can switch to a USB connection and reloads."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={"connection_type": CONNECTION_TYPE_SOCKETCAND, **MOCK_CONFIG},
+        unique_id=f"{CONNECTION_TYPE_SOCKETCAND}:{MOCK_CONFIG['host']}:{MOCK_CONFIG['port']}/{MOCK_CONFIG['interface']}",
+    )
+    entry.add_to_hass(hass)
+
+    result = await entry.start_reconfigure_flow(hass)
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "reconfigure"
+
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={"connection_type": CONNECTION_TYPE_USB},
+    )
+    assert result2["type"] == FlowResultType.FORM
+    assert result2["step_id"] == "reconfigure_usb"
+
+    with patch(
+        "custom_components.dobiss_sx_evolution.async_setup_entry",
+        return_value=True,
+    ):
+        result3 = await hass.config_entries.flow.async_configure(
+            result2["flow_id"], user_input={CONF_DEVICE: MOCK_USB_DEVICE}
+        )
+        await hass.async_block_till_done()
+
+    assert result3["type"] == FlowResultType.ABORT
+    assert result3["reason"] == "reconfigure_successful"
+    assert entry.data["connection_type"] == CONNECTION_TYPE_USB
+    assert entry.data[CONF_DEVICE] == MOCK_USB_DEVICE
+
+
 # ---------------------------------------------------------------------------
 # _validate_module / _occupied_outputs_in_module (pure helper functions)
 # ---------------------------------------------------------------------------

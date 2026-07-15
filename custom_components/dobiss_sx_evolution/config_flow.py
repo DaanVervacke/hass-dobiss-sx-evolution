@@ -383,6 +383,131 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
             step_id="reauth_usb", data_schema=schema, errors=errors
         )
 
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle user-initiated reconfiguration of connection parameters."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            connection_type = user_input.get(CONF_CONNECTION_TYPE)
+            if connection_type == CONNECTION_TYPE_SOCKETCAND:
+                return await self.async_step_reconfigure_socketcand(None)
+            elif connection_type == CONNECTION_TYPE_USB:
+                return await self.async_step_reconfigure_usb(None)
+            else:
+                errors[CONF_CONNECTION_TYPE] = "invalid_connection_type"
+
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=self._get_connection_type_schema(),
+            errors=errors,
+        )
+
+    async def async_step_reconfigure_socketcand(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Reconfigure with new socketcand connection details."""
+        errors: dict[str, str] = {}
+        entry = self._get_reconfigure_entry()
+
+        if user_input is not None:
+            conn = SocketcandConnection(
+                host=user_input[CONF_HOST],
+                port=user_input[CONF_PORT],
+                interface=user_input[CONF_INTERFACE],
+            )
+            try:
+                await self.hass.async_add_executor_job(
+                    _probe_bus_sync, conn
+                )
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.debug("CAN probe failed: %s", err)
+                errors["base"] = "cannot_connect"
+            else:
+                return self.async_update_reload_and_abort(
+                    entry,
+                    unique_id=f"{CONNECTION_TYPE_SOCKETCAND}:{user_input[CONF_HOST]}:{user_input[CONF_PORT]}/{user_input[CONF_INTERFACE]}",
+                    data={
+                        CONF_CONNECTION_TYPE: CONNECTION_TYPE_SOCKETCAND,
+                        CONF_HOST: user_input[CONF_HOST],
+                        CONF_PORT: user_input[CONF_PORT],
+                        CONF_INTERFACE: user_input[CONF_INTERFACE],
+                    },
+                    reason="reconfigure_successful",
+                )
+
+        defaults = {
+            CONF_HOST: entry.data.get(CONF_HOST, ""),
+            CONF_PORT: entry.data.get(CONF_PORT, DEFAULT_PORT),
+            CONF_INTERFACE: entry.data.get(CONF_INTERFACE, DEFAULT_INTERFACE),
+        }
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_HOST, default=defaults[CONF_HOST]): str,
+                vol.Required(
+                    CONF_PORT, default=defaults[CONF_PORT]
+                ): vol.All(int, vol.Range(min=1, max=65535)),
+                vol.Required(
+                    CONF_INTERFACE, default=defaults[CONF_INTERFACE]
+                ): str,
+            }
+        )
+        return self.async_show_form(
+            step_id="reconfigure_socketcand", data_schema=schema, errors=errors
+        )
+
+    async def async_step_reconfigure_usb(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Reconfigure with new USB connection details."""
+        errors: dict[str, str] = {}
+        entry = self._get_reconfigure_entry()
+        device_options = await self._build_usb_device_options()
+
+        if user_input is not None:
+            conn = UsbConnection(
+                device=user_input[CONF_DEVICE],
+                baudrate=DEFAULT_BAUDRATE,
+                can_interface="slcan",
+            )
+            try:
+                await self.hass.async_add_executor_job(
+                    _probe_bus_sync, conn
+                )
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.debug("CAN probe failed: %s", err)
+                errors["base"] = "cannot_connect"
+            else:
+                return self.async_update_reload_and_abort(
+                    entry,
+                    unique_id=f"{CONNECTION_TYPE_USB}:{user_input[CONF_DEVICE]}",
+                    data={
+                        CONF_CONNECTION_TYPE: CONNECTION_TYPE_USB,
+                        CONF_DEVICE: user_input[CONF_DEVICE],
+                    },
+                    reason="reconfigure_successful",
+                )
+
+        defaults = {
+            CONF_DEVICE: entry.data.get(CONF_DEVICE, ""),
+        }
+        schema = vol.Schema(
+            {
+                vol.Required(
+                    CONF_DEVICE, default=defaults[CONF_DEVICE]
+                ): SelectSelector(
+                    SelectSelectorConfig(
+                        options=device_options,
+                        mode=SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+            }
+        )
+        return self.async_show_form(
+            step_id="reconfigure_usb", data_schema=schema, errors=errors
+        )
+
     @classmethod
     @callback
     def async_get_supported_subentry_types(
