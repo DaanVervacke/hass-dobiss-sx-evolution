@@ -44,7 +44,9 @@ _LOGGER = logging.getLogger(__name__)
 CONNECTION_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_HOST): str,
-        vol.Required(CONF_PORT, default=DEFAULT_PORT): int,
+        vol.Required(CONF_PORT, default=DEFAULT_PORT): vol.All(
+            int, vol.Range(min=1, max=65535)
+        ),
         vol.Required(CONF_INTERFACE, default=DEFAULT_INTERFACE): str,
     }
 )
@@ -319,7 +321,7 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_HOST, default=defaults.get(CONF_HOST, "")): str,
                 vol.Required(
                     CONF_PORT, default=defaults.get(CONF_PORT, DEFAULT_PORT)
-                ): int,
+                ): vol.All(int, vol.Range(min=1, max=65535)),
                 vol.Required(
                     CONF_INTERFACE,
                     default=defaults.get(CONF_INTERFACE, DEFAULT_INTERFACE),
