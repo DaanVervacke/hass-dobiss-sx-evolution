@@ -112,7 +112,7 @@ class DobissLight(DobissEntity, LightEntity):
 
     @property
     def brightness(self) -> int | None:
-        """Return brightness scaled to 0–255, or None for non-dimmable.
+        """Return brightness scaled to 0-255, or None for non-dimmable.
 
         When we have an optimistic value (set by async_turn_on before the CAN
         echo returns) we return it verbatim so the HA slider does not snap to

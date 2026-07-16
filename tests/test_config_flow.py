@@ -478,7 +478,7 @@ def test_validate_module_rejects_invalid():
 
 def test_validate_module_rejects_non_ascii_letter() -> None:
     """Cyrillic A (U+0410) looks like Latin A but is not ASCII."""
-    assert _validate_module("А") == "invalid_module"
+    assert _validate_module("А") == "invalid_module"  # noqa: RUF001
 
 
 def test_occupied_outputs_light_only():
@@ -1449,7 +1449,7 @@ async def test_usb_discovery_flow(
     hass: HomeAssistant, mock_probe, mock_usb_ports
 ) -> None:
     """USB discovery sets the discovered device and routes to usb_manual."""
-    from homeassistant.helpers.service_info.usb import UsbServiceInfo
+    from homeassistant.helpers.service_info.usb import UsbServiceInfo  # noqa: PLC0415
 
     discovery_info = UsbServiceInfo(
         device=MOCK_USB_DEVICE,

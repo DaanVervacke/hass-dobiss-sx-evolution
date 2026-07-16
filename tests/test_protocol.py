@@ -194,7 +194,7 @@ def test_dump_request_frame():
 
 
 def test_can_to_ha_brightness():
-    """CAN range 0–90 maps to HA range 0–255 (integer division)."""
+    """CAN range 0-90 maps to HA range 0-255 (integer division)."""
     assert can_to_ha_brightness(0) == 0
     assert can_to_ha_brightness(90) == 255
     # 45 * 255 // 90 = 11475 // 90 = 127
@@ -225,7 +225,7 @@ def test_ha_to_can_brightness_midpoint():
 
 
 def test_ha_to_can_brightness_near_zero_clamps_to_minimum_step():
-    """HA 1 rounds to 0 steps, but is clamped to the minimum step (16) so turn_on never sends OFF."""
+    """HA 1 rounds to 0 steps, clamped to the min step so turn_on never sends OFF."""
     assert ha_to_can_brightness(1) == 16
 
 

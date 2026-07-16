@@ -140,7 +140,9 @@ async def test_coordinator_usb_connection(hass: HomeAssistant, mock_controller) 
     # mock_controller patches coordinator.DobissController with a MagicMock
     # whose return_value is the fake controller. The patched class itself
     # records the constructor call so we can inspect the connection kwarg.
-    from custom_components.dobiss_sx_evolution.coordinator import DobissController
+    from custom_components.dobiss_sx_evolution.coordinator import (  # noqa: PLC0415
+        DobissController,
+    )
 
     call_kwargs = DobissController.call_args.kwargs  # type: ignore[attr-defined]
     connection = call_kwargs["connection"]

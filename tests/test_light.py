@@ -10,7 +10,6 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from homeassistant.components.light import ATTR_BRIGHTNESS, ColorMode
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
@@ -52,7 +51,7 @@ def _subentry_data(*, dimmable: bool, title: str = "Module A") -> dict:
 def _make_entry(
     hass: HomeAssistant, *, dimmable: bool, title: str = "Module A"
 ) -> MockConfigEntry:
-    """Build a config entry with one module subentry containing a single light output."""
+    """Build a config entry with one module subentry containing a single light."""
     entry_data = {
         "connection_type": CONNECTION_TYPE_SOCKETCAND,
         **MOCK_CONFIG,
@@ -167,7 +166,8 @@ async def test_light_links_to_module_device_without_area(
     the entity has no inherited area.  This lets users assign each light to
     its own room individually via the entity settings dialog.
     """
-    from homeassistant.helpers import device_registry as dr, entity_registry as er
+    from homeassistant.helpers import device_registry as dr  # noqa: PLC0415
+    from homeassistant.helpers import entity_registry as er  # noqa: PLC0415
 
     entry = await _setup(hass, dimmable=False)
 
@@ -195,7 +195,7 @@ async def test_turn_on_without_brightness_does_not_overflow(
     can_to_ha_brightness(144), which computes 144 * 255 // 90 = 408 -
     exceeding HA's 0-255 range.
     """
-    from homeassistant.helpers import entity_platform as ep
+    from homeassistant.helpers import entity_platform as ep  # noqa: PLC0415
 
     await _setup(hass, dimmable=True)
 
@@ -289,7 +289,7 @@ async def test_turn_off_can_error_raises_ha_error(hass: HomeAssistant) -> None:
 
 def _get_light_entity(hass: HomeAssistant, entity_id: str):
     """Look up the live entity object from the platform."""
-    from homeassistant.helpers import entity_platform as ep
+    from homeassistant.helpers import entity_platform as ep  # noqa: PLC0415
 
     platforms = ep.async_get_platforms(hass, DOMAIN)
     light_platform = next(p for p in platforms if p.domain == "light")

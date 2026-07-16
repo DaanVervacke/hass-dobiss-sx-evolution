@@ -320,7 +320,7 @@ class DobissController:
     async def async_turn_on(
         self, key: OutputKey, brightness: int | None = None
     ) -> None:
-        """Send an ON write. brightness is HA-scaled (0–255) for dimmable outputs."""
+        """Send an ON write. brightness is HA-scaled (0-255) for dimmable outputs."""
         module, output = key
         if self.dimmable(key):
             if brightness is not None:
@@ -399,7 +399,8 @@ class DobissController:
                 # No response at all within the deadline.  Give up and
                 # let the read loop handle any late frames as usual.
                 _LOGGER.warning(
-                    "State refresh saw no response within %.1fs; state cache may be stale",
+                    "State refresh saw no response within %.1fs; "
+                    "state cache may be stale",
                     timeout,
                 )
                 return
@@ -499,7 +500,7 @@ class DobissController:
 
     @callback
     def _raise_repair_issue(self) -> None:
-        """Create a repair issue and start a reauth flow when the CAN bus is persistently lost."""
+        """Create a repair issue and reauth flow when the bus is persistently lost."""
         if self._repair_issue_active:
             return
         self._repair_issue_active = True

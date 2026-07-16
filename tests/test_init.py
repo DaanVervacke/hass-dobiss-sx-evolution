@@ -8,16 +8,16 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.dobiss_sx_evolution.const import (
-    CONNECTION_TYPE_SOCKETCAND,
-    DOMAIN,
-    SUBENTRY_TYPE_MODULE,
-)
-from custom_components.dobiss_sx_evolution.__init__ import (  # noqa: PLC0415
+from custom_components.dobiss_sx_evolution.__init__ import (
     _connection_key,
     _make_reload_listener,
     _module_config,
     async_remove_config_entry_device,
+)
+from custom_components.dobiss_sx_evolution.const import (
+    CONNECTION_TYPE_SOCKETCAND,
+    DOMAIN,
+    SUBENTRY_TYPE_MODULE,
 )
 
 from .conftest import MOCK_CONFIG
@@ -170,32 +170,32 @@ async def test_reload_listener_output_only_change_skips_full_reload(
 
     listener = _make_reload_listener(entry)
 
-    with patch(
-        "custom_components.dobiss_sx_evolution.__init__.hass",
-        create=True,
+    with (
+        patch(
+            "custom_components.dobiss_sx_evolution.__init__.hass",
+            create=True,
+        ),
+        patch.object(hass.config_entries, "async_reload", side_effect=_fake_reload),
     ):
-        with patch.object(
-            hass.config_entries, "async_reload", side_effect=_fake_reload
-        ):
-            unload_calls: list = []
-            forward_calls: list = []
+        unload_calls: list = []
+        forward_calls: list = []
 
-            with (
-                patch.object(
-                    hass.config_entries,
-                    "async_unload_platforms",
-                    new=AsyncMock(
-                        return_value=True,
-                        side_effect=lambda e, p: unload_calls.append(1) or True,
-                    ),
+        with (
+            patch.object(
+                hass.config_entries,
+                "async_unload_platforms",
+                new=AsyncMock(
+                    return_value=True,
+                    side_effect=lambda e, p: unload_calls.append(1) or True,
                 ),
-                patch.object(
-                    hass.config_entries,
-                    "async_forward_entry_setups",
-                    new=AsyncMock(side_effect=lambda e, p: forward_calls.append(1)),
-                ),
-            ):
-                await listener(hass, updated_entry)
+            ),
+            patch.object(
+                hass.config_entries,
+                "async_forward_entry_setups",
+                new=AsyncMock(side_effect=lambda e, p: forward_calls.append(1)),
+            ),
+        ):
+            await listener(hass, updated_entry)
 
     # Full reload must NOT have been called.
     assert reload_calls == [], (
@@ -305,7 +305,7 @@ async def test_reload_listener_new_module_triggers_full_reload(
     with patch.object(
         hass.config_entries,
         "async_reload",
-        new=AsyncMock(side_effect=lambda eid: reload_calls.append(eid)),
+        new=AsyncMock(side_effect=reload_calls.append),
     ):
         await listener(hass, updated_entry)
 
@@ -345,7 +345,7 @@ async def test_reload_listener_connection_change_triggers_full_reload(
     with patch.object(
         hass.config_entries,
         "async_reload",
-        new=AsyncMock(side_effect=lambda eid: reload_calls.append(eid)),
+        new=AsyncMock(side_effect=reload_calls.append),
     ):
         await listener(hass, updated_entry)
 
@@ -380,7 +380,7 @@ async def test_reload_listener_title_rename_updates_device_registry(
     The listener additionally pushes the new title to the device registry so
     the module device name stays in sync without a full bus reconnect.
     """
-    from homeassistant.helpers import device_registry as dr
+    from homeassistant.helpers import device_registry as dr  # noqa: PLC0415
 
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -471,7 +471,7 @@ async def test_reload_listener_dimmable_toggle_triggers_full_reload(
     with patch.object(
         hass.config_entries,
         "async_reload",
-        new=AsyncMock(side_effect=lambda eid: reload_calls.append(eid)),
+        new=AsyncMock(side_effect=reload_calls.append),
     ):
         await listener(hass, updated_entry)
 
@@ -489,7 +489,7 @@ async def test_remove_device_allows_module_device(
     hass: HomeAssistant, mock_controller
 ) -> None:
     """A module device (not the hub) may be removed once its subentry is gone."""
-    from homeassistant.helpers import device_registry as dr
+    from homeassistant.helpers import device_registry as dr  # noqa: PLC0415
 
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -515,7 +515,7 @@ async def test_remove_device_blocks_hub_device(
     hass: HomeAssistant, mock_controller
 ) -> None:
     """The hub (Max200) device must never be removable via the device page."""
-    from homeassistant.helpers import device_registry as dr
+    from homeassistant.helpers import device_registry as dr  # noqa: PLC0415
 
     entry = MockConfigEntry(
         domain=DOMAIN, data=_make_entry_data(), title="DOBISS", version=1

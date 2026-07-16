@@ -10,7 +10,10 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.dobiss_sx_evolution.const import DOMAIN
+from custom_components.dobiss_sx_evolution.const import (
+    CONNECTION_TYPE_SOCKETCAND,
+    DOMAIN,
+)
 from custom_components.dobiss_sx_evolution.controller import (
     RECONNECT_BACKOFF_INITIAL_S,
     RECONNECT_BACKOFF_MAX_S,
@@ -43,8 +46,6 @@ def _make_entry(
     hass: HomeAssistant, entry_id: str = "test_entry_id"
 ) -> MockConfigEntry:
     """Register a minimal config entry with hass and return it."""
-    from custom_components.dobiss_sx_evolution.const import CONNECTION_TYPE_SOCKETCAND
-
     entry = MockConfigEntry(
         domain=DOMAIN,
         entry_id=entry_id,

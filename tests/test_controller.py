@@ -8,16 +8,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from homeassistant.core import HomeAssistant
 
-from custom_components.dobiss_sx_evolution.const import CAN_ID_RX_STATE
+from custom_components.dobiss_sx_evolution.const import (
+    CAN_ID_RX_STATE,
+    CAN_ID_STATE_DUMP,
+    MAX_CAN_BRIGHTNESS_TX,
+)
 from custom_components.dobiss_sx_evolution.controller import (
+    _DUMP_DRAIN_IDLE_S,
     DobissController,
     ShutterConfig,
     SocketcandConnection,
-    _DUMP_DRAIN_IDLE_S,
-)
-from custom_components.dobiss_sx_evolution.const import (
-    CAN_ID_STATE_DUMP,
-    MAX_CAN_BRIGHTNESS_TX,
 )
 from custom_components.dobiss_sx_evolution.protocol import ha_to_can_brightness
 
@@ -71,7 +71,9 @@ def _make_full_controller(hass: HomeAssistant) -> DobissController:
 
 def _make_fake_message(module: str = "A", output: int = 1, state: int = 1) -> MagicMock:
     """Return a mock CAN message that parse_state_frame will recognise."""
-    from custom_components.dobiss_sx_evolution.protocol import build_state_frame
+    from custom_components.dobiss_sx_evolution.protocol import (  # noqa: PLC0415
+        build_state_frame,
+    )
 
     frame = build_state_frame(module, output, state)
     msg = MagicMock()
@@ -232,7 +234,7 @@ async def test_read_loop_reconnect_sets_up_notifier_before_dump(
 
 
 async def test_collect_initial_state_drains_all_frames(hass: HomeAssistant) -> None:
-    """_collect_initial_state must consume frames until idle, not just the first module frame."""
+    """_collect_initial_state must drain frames until idle, not just the first."""
     ctrl = _make_controller(hass)
 
     # Build two fake messages for module A (simulating a burst).
@@ -290,13 +292,15 @@ async def test_read_frames_reuses_existing_reader(hass: HomeAssistant) -> None:
 
     notifier_ctor_calls: list = []
 
-    with patch.object(
-        _can,
-        "Notifier",
-        side_effect=lambda *a, **kw: notifier_ctor_calls.append(1) or MagicMock(),
+    with (
+        patch.object(
+            _can,
+            "Notifier",
+            side_effect=lambda *a, **kw: notifier_ctor_calls.append(1) or MagicMock(),
+        ),
+        pytest.raises(asyncio.CancelledError),
     ):
-        with pytest.raises(asyncio.CancelledError):
-            await ctrl._read_frames()
+        await ctrl._read_frames()
 
     assert notifier_ctor_calls == [], (
         "Notifier must NOT be constructed when self._reader is already set"
@@ -320,7 +324,9 @@ async def test_async_refresh_and_settle_sends_dump_and_returns_on_idle(
         await ctrl.async_refresh_and_settle(idle=0.05, timeout=1.0)
         await firing
 
-    from custom_components.dobiss_sx_evolution.protocol import DUMP_REQUEST_FRAME
+    from custom_components.dobiss_sx_evolution.protocol import (  # noqa: PLC0415
+        DUMP_REQUEST_FRAME,
+    )
 
     send.assert_awaited_once_with(*DUMP_REQUEST_FRAME)
 
@@ -442,9 +448,12 @@ async def test_frame_arrival_hook_ignores_tx_echoes(
     write, which would let the refresh return before the DOBISS response
     starts arriving.
     """
-    from custom_components.dobiss_sx_evolution.const import CAN_ID_TX_STATE
+    from custom_components.dobiss_sx_evolution.const import (  # noqa: PLC0415
+        CAN_ID_TX_STATE,
+    )
 
     ctrl = _make_controller(hass)
+
     ctrl._frame_arrival = asyncio.Event()
 
     echo = _make_fake_message("A", 1, 1)
@@ -597,11 +606,13 @@ async def test_open_bus_closes_orphaned_bus_when_cancelled_mid_connect(
     def fake_async_add_executor_job(*args, **kwargs):
         return _RacedExecutorFuture()
 
-    with patch.object(
-        ctrl.hass, "async_add_executor_job", side_effect=fake_async_add_executor_job
+    with (
+        patch.object(
+            ctrl.hass, "async_add_executor_job", side_effect=fake_async_add_executor_job
+        ),
+        pytest.raises(asyncio.CancelledError),
     ):
-        with pytest.raises(asyncio.CancelledError):
-            await ctrl._open_bus()
+        await ctrl._open_bus()
 
     fake_bus.shutdown.assert_called_once()
     assert ctrl._bus is None

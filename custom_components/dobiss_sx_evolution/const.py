@@ -45,7 +45,7 @@ DISCOVERY_TIMEOUT_S: Final = 15.0
 # controller lost power but TCP/serial stayed up).
 LIVENESS_TIMEOUT_S: Final = 300.0
 
-# Brightness scaling: DOBISS echoes 0–90, accepts 0–144 in steps of 16.
+# Brightness scaling: DOBISS echoes 0-90, accepts 0-144 in steps of 16.
 MAX_CAN_BRIGHTNESS_TX: Final = 144
 MAX_CAN_BRIGHTNESS_RX: Final = 90
 BRIGHTNESS_STEP: Final = 16

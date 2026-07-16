@@ -10,7 +10,6 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -41,7 +40,7 @@ def _subentry_data(*, title: str = "Module A") -> dict:
 
 
 def _make_entry(hass: HomeAssistant, *, title: str = "Module A") -> MockConfigEntry:
-    """Build a config entry with one module subentry containing a single switch output."""
+    """Build a config entry with one module subentry containing a single switch."""
     entry_data = {
         "connection_type": CONNECTION_TYPE_SOCKETCAND,
         **MOCK_CONFIG,
@@ -187,8 +186,8 @@ async def test_switch_availability(hass: HomeAssistant) -> None:
 
 
 async def test_switch_unique_id_and_entity_id(hass: HomeAssistant) -> None:
-    """unique_id follows {subentry_id}-switch_{output}; entity_id gets the sx_evo prefix."""
-    from homeassistant.helpers import entity_registry as er
+    """unique_id follows {subentry_id}-switch_{output}, entity_id gets sx_evo prefix."""
+    from homeassistant.helpers import entity_registry as er  # noqa: PLC0415
 
     entry = await _setup(hass, state=0)
 
