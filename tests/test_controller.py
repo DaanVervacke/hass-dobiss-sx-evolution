@@ -14,7 +14,10 @@ from custom_components.dobiss_sx_evolution.controller import (
     SocketcandConnection,
     _DUMP_DRAIN_IDLE_S,
 )
-from custom_components.dobiss_sx_evolution.const import MAX_CAN_BRIGHTNESS_TX
+from custom_components.dobiss_sx_evolution.const import (
+    CAN_ID_STATE_DUMP,
+    MAX_CAN_BRIGHTNESS_TX,
+)
 from custom_components.dobiss_sx_evolution.protocol import ha_to_can_brightness
 
 _real_sleep = asyncio.sleep
@@ -22,6 +25,24 @@ _real_sleep = asyncio.sleep
 _TEST_CONNECTION = SocketcandConnection(
     host="192.168.1.10", port=29536, interface="can0"
 )
+
+
+def _make_noopslep(recorded: list[float] | None = None):
+    """Return a fake asyncio.sleep that records delays and yields once."""
+
+    async def _fake(delay: float) -> None:
+        if recorded is not None:
+            recorded.append(delay)
+        # Yield to the real event loop without actually waiting.
+        await _real_sleep(0)
+
+    return _fake
+
+
+async def _drain(hass: HomeAssistant, n: int = 10) -> None:
+    """Let the event loop flush pending callbacks n times."""
+    for _ in range(n):
+        await _real_sleep(0)
 
 
 def _make_controller(hass: HomeAssistant) -> DobissController:
@@ -112,6 +133,103 @@ async def test_teardown_notifier_calls_stop_via_executor(hass: HomeAssistant) ->
     assert stop_calls == [1], "notifier.stop() must be called exactly once"
     assert ctrl._notifier is None
     assert ctrl._reader is None
+
+
+async def test_open_bus_tears_down_notifier_before_replacing_bus(
+    hass: HomeAssistant,
+) -> None:
+    """_open_bus must stop the old notifier before shutting down the old bus.
+
+    The notifier's reader-thread keeps bus.recv() alive; tearing it down
+    after the old bus is already shut down would race the read thread
+    against a bus that has gone away underneath it.
+    """
+    ctrl = _make_controller(hass)
+
+    old_bus = MagicMock()
+    fake_notifier = MagicMock()
+    ctrl._bus = old_bus
+    ctrl._notifier = fake_notifier
+    ctrl._reader = MagicMock()
+
+    call_order: list[str] = []
+    original_teardown = ctrl._teardown_notifier
+
+    async def _tracked_teardown() -> None:
+        call_order.append("teardown_notifier")
+        await original_teardown()
+
+    old_bus.shutdown = MagicMock(
+        side_effect=lambda: call_order.append("bus.shutdown")
+    )
+
+    new_bus = MagicMock()
+
+    with (
+        patch.object(ctrl, "_teardown_notifier", side_effect=_tracked_teardown),
+        patch.object(SocketcandConnection, "make_bus", return_value=new_bus),
+    ):
+        await ctrl._open_bus()
+
+    assert call_order == ["teardown_notifier", "bus.shutdown"], (
+        f"Expected teardown_notifier before old bus.shutdown, got {call_order}"
+    )
+    assert ctrl._bus is new_bus
+
+
+async def test_read_loop_reconnect_sets_up_notifier_before_dump(
+    hass: HomeAssistant,
+) -> None:
+    """_read_loop must call _setup_notifier before sending the reconnect dump.
+
+    Regression guard: _open_bus tears down the notifier when it replaces the
+    bus, so the reconnect path must re-create it (via _setup_notifier)
+    before the dump request goes out. Otherwise the echoed dump burst has
+    nowhere to land and reconnect discovery silently drops frames.
+    """
+    ctrl = _make_controller(hass)
+
+    call_order: list[str] = []
+    read_calls = 0
+
+    async def fake_read_frames() -> None:
+        nonlocal read_calls
+        read_calls += 1
+        if read_calls == 1:
+            raise OSError("simulated read failure")
+        raise asyncio.CancelledError
+
+    async def fake_open_bus() -> None:
+        return None
+
+    async def fake_setup_notifier() -> None:
+        call_order.append("setup_notifier")
+
+    async def fake_send_frame(can_id: int, data: bytes) -> None:
+        if can_id == CAN_ID_STATE_DUMP:
+            call_order.append("send_frame_dump")
+
+    with (
+        patch.object(ctrl, "_read_frames", side_effect=fake_read_frames),
+        patch.object(ctrl, "_open_bus", side_effect=fake_open_bus),
+        patch.object(ctrl, "_setup_notifier", side_effect=fake_setup_notifier),
+        patch.object(ctrl, "_send_frame", side_effect=fake_send_frame),
+        patch(
+            "custom_components.dobiss_sx_evolution.controller.asyncio.sleep",
+            side_effect=_make_noopslep(),
+        ),
+    ):
+        task = hass.async_create_background_task(
+            ctrl._read_loop(), "test_reconnect_order"
+        )
+        await _drain(hass, n=40)
+        task.cancel()
+        with pytest.raises((asyncio.CancelledError, Exception)):
+            await task
+
+    assert call_order == ["setup_notifier", "send_frame_dump"], (
+        f"Expected setup_notifier before the dump request, got {call_order}"
+    )
 
 
 async def test_collect_initial_state_drains_all_frames(hass: HomeAssistant) -> None:
