@@ -42,9 +42,9 @@ and switch entities.
 - Local push only, no cloud, no polling
 - Light entities for on/off and dimmable outputs
 - Cover entities for shutter outputs (open, close, stop)
-- Switch entities for generic on/off relays like door buzzers or irrigation valves
+- Switch entities for generic on/off relay outputs
 - Diagnostic sensors for bus connection status and reconnect count
-- Reconnects automatically with exponential backoff; raises a repair issue if the bus stays down
+- Reconnects automatically with exponential backoff. Raises a repair issue if the bus stays down
 - Requests a full state dump on startup and after each reconnect
 - `dobiss_sx_evolution.refresh` service to trigger a manual state resync
 - Works with both socketcand (TCP) and USB CAN adapters (slcan)
@@ -190,7 +190,7 @@ services** and click **Add module**.
 |---|---|---|
 | Module letter | Yes | Single letter A-Z identifying the module on the bus |
 | Module name | No | Friendly name, defaults to `Module <letter>` |
-| Dimmable | No | Enable for dimmer modules; applies brightness support to every light on this module |
+| Dimmable | No | Enable for dimmer modules. Applies brightness support to every light on this module |
 
 ### Configuring outputs
 
@@ -256,7 +256,7 @@ If something is not working, try these steps before filing an issue:
    - *Cannot send*: a CAN frame write failed after the connection was
      established. The integration will try to reconnect automatically.
    - *Repair issue "cannot_connect"*: the CAN bus has been unreachable long
-     enough for backoff to hit its ceiling. Fix the network or daemon issue;
+     enough for backoff to hit its ceiling. Fix the network or daemon issue,
      the repair clears automatically on reconnection.
 
 4. **File an issue** at
