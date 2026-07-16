@@ -10,9 +10,12 @@ from homeassistant.core import HomeAssistant
 from custom_components.dobiss_sx_evolution.const import CAN_ID_RX_STATE
 from custom_components.dobiss_sx_evolution.controller import (
     DobissController,
+    ShutterConfig,
     SocketcandConnection,
     _DUMP_DRAIN_IDLE_S,
 )
+from custom_components.dobiss_sx_evolution.const import MAX_CAN_BRIGHTNESS_TX
+from custom_components.dobiss_sx_evolution.protocol import ha_to_can_brightness
 
 _real_sleep = asyncio.sleep
 
@@ -29,6 +32,18 @@ def _make_controller(hass: HomeAssistant) -> DobissController:
         dimmers=[],
         shutters=[],
         entry_id="test_ctrl",
+    )
+
+
+def _make_full_controller(hass: HomeAssistant) -> DobissController:
+    """Controller with a non-dimmable light, a dimmable light, and a shutter."""
+    return DobissController(
+        hass,
+        connection=_TEST_CONNECTION,
+        lights=[("A", 1)],
+        dimmers={("A", 2)},
+        shutters=[ShutterConfig(module="A", up_output=9, down_output=10)],
+        entry_id="test_full",
     )
 
 
@@ -456,3 +471,88 @@ async def test_read_frames_raises_on_liveness_timeout(hass: HomeAssistant) -> No
         pytest.raises(RuntimeError, match="No CAN frames received"),
     ):
         await ctrl._read_frames()
+
+
+async def test_turn_on_non_dimmable_sends_value_1(hass: HomeAssistant) -> None:
+    """Non-dimmable turn_on sends value=1 regardless of brightness arg."""
+    ctrl = _make_full_controller(hass)
+    ctrl._send_frame = AsyncMock()
+    await ctrl.async_turn_on(("A", 1))
+    ctrl._send_frame.assert_awaited_once()
+    _, data = ctrl._send_frame.call_args[0]
+    assert data[3] == 1
+    assert ctrl.states[("A", 1)] == 1
+
+
+async def test_turn_on_dimmable_with_brightness(hass: HomeAssistant) -> None:
+    """Dimmable turn_on with explicit brightness sends converted CAN value."""
+    ctrl = _make_full_controller(hass)
+    ctrl._send_frame = AsyncMock()
+    await ctrl.async_turn_on(("A", 2), brightness=128)
+    _, data = ctrl._send_frame.call_args[0]
+    expected = ha_to_can_brightness(128)
+    assert data[3] == expected
+    assert ctrl.states[("A", 2)] == expected
+
+
+async def test_turn_on_dimmable_no_brightness_sends_max(hass: HomeAssistant) -> None:
+    """Dimmable turn_on without brightness sends MAX_CAN_BRIGHTNESS_TX."""
+    ctrl = _make_full_controller(hass)
+    ctrl._send_frame = AsyncMock()
+    await ctrl.async_turn_on(("A", 2))
+    _, data = ctrl._send_frame.call_args[0]
+    assert data[3] == MAX_CAN_BRIGHTNESS_TX
+    assert ctrl.states[("A", 2)] == MAX_CAN_BRIGHTNESS_TX
+
+
+async def test_turn_off_sends_zero_and_clears_state(hass: HomeAssistant) -> None:
+    """turn_off sends value=0 and updates local state."""
+    ctrl = _make_full_controller(hass)
+    ctrl._send_frame = AsyncMock()
+    ctrl.states[("A", 1)] = 1
+    await ctrl.async_turn_off(("A", 1))
+    _, data = ctrl._send_frame.call_args[0]
+    assert data[3] == 0
+    assert ctrl.states[("A", 1)] == 0
+
+
+async def test_open_shutter_sets_up_clears_down(hass: HomeAssistant) -> None:
+    """open_shutter sends up=1 and locally sets up=1, down=0."""
+    ctrl = _make_full_controller(hass)
+    ctrl._send_frame = AsyncMock()
+    shutter = ShutterConfig(module="A", up_output=9, down_output=10)
+    await ctrl.async_open_shutter(shutter)
+    assert ctrl.states[("A", 9)] == 1
+    assert ctrl.states[("A", 10)] == 0
+
+
+async def test_close_shutter_sets_down_clears_up(hass: HomeAssistant) -> None:
+    """close_shutter sends down=1 and locally sets down=1, up=0."""
+    ctrl = _make_full_controller(hass)
+    ctrl._send_frame = AsyncMock()
+    shutter = ShutterConfig(module="A", up_output=9, down_output=10)
+    await ctrl.async_close_shutter(shutter)
+    assert ctrl.states[("A", 10)] == 1
+    assert ctrl.states[("A", 9)] == 0
+
+
+async def test_stop_shutter_clears_both(hass: HomeAssistant) -> None:
+    """stop_shutter sends up=0 and locally clears both up and down."""
+    ctrl = _make_full_controller(hass)
+    ctrl._send_frame = AsyncMock()
+    ctrl.states[("A", 9)] = 1
+    ctrl.states[("A", 10)] = 0
+    shutter = ShutterConfig(module="A", up_output=9, down_output=10)
+    await ctrl.async_stop_shutter(shutter)
+    assert ctrl.states[("A", 9)] == 0
+    assert ctrl.states[("A", 10)] == 0
+
+
+async def test_turn_on_fires_listener(hass: HomeAssistant) -> None:
+    """Command methods must fire registered listeners via _apply_local."""
+    ctrl = _make_full_controller(hass)
+    ctrl._send_frame = AsyncMock()
+    received = []
+    ctrl.async_add_listener(lambda key, val: received.append((key, val)))
+    await ctrl.async_turn_on(("A", 1))
+    assert received == [(("A", 1), 1)]
