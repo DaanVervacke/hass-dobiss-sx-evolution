@@ -13,11 +13,10 @@
 ---
 
 Custom [Home Assistant](https://www.home-assistant.io/) integration for the
-[DOBISS SX Evolution](https://dobiss.com/). Connects to a DOBISS CAN bus
-(Max200 controller, 125 kbit/s) either via a
-[`socketcand`](https://github.com/linux-can/socketcand) daemon over TCP or
-via a USB CAN adapter (slcan-compatible, e.g. CANable) plugged directly into
-your Home Assistant host, and exposes configured outputs as light, cover,
+[DOBISS SX Evolution](https://dobiss.com/). Talks to the DOBISS CAN bus
+(Max200 controller, 125 kbit/s) over a
+[`socketcand`](https://github.com/linux-can/socketcand) TCP connection or a
+USB CAN adapter (slcan, e.g. CANable) and exposes outputs as light, cover,
 and switch entities.
 
 ## Table of contents
@@ -40,31 +39,28 @@ and switch entities.
 
 ## Features
 
-- Purely local, push-based updates via the CAN bus with no cloud dependency and no polling
+- Local push only, no cloud, no polling
 - Light entities for on/off and dimmable outputs
 - Cover entities for shutter outputs (open, close, stop)
-- Switch entities for generic on/off relays (door buzzers, irrigation valves, ventilation fans)
-- Diagnostic sensors for CAN bus connection status and reconnect count
-- Automatic reconnection with exponential backoff and a Home Assistant repair issue when the bus stays down
-- State-dump request on startup and after every reconnect to bring entities up to date
-- Domain-wide `dobiss_sx_evolution.refresh` service for manual state resync
-- Supports both socketcand (TCP) and USB CAN adapters (slcan)
+- Switch entities for generic on/off relays like door buzzers or irrigation valves
+- Diagnostic sensors for bus connection status and reconnect count
+- Reconnects automatically with exponential backoff; raises a repair issue if the bus stays down
+- Requests a full state dump on startup and after each reconnect
+- `dobiss_sx_evolution.refresh` service to trigger a manual state resync
+- Works with both socketcand (TCP) and USB CAN adapters (slcan)
 
 ## Entities
-
-The integration creates the following entities for each configured output
-or for the hub device itself.
 
 ### Lights
 
 One `light` entity per configured light output. Brightness control is
-available when the parent module is marked as a dimmer.
+available when the module is marked as a dimmer.
 
 ### Covers
 
-One `cover` entity per configured shutter output. Each shutter uses two
-physical outputs (up and down). Position is not reported by the bus, so
-covers use `assumed_state` and `is_closed` is always unknown.
+One `cover` entity per configured shutter. Each shutter uses two physical
+outputs (up and down). The bus does not report position, so covers use
+`assumed_state` and `is_closed` is always unknown.
 
 ### Switches
 
@@ -73,12 +69,12 @@ on/off relays that are not lights or shutters.
 
 ### Diagnostic sensors
 
-Created automatically on the hub device (Max200 controller):
+Created on the hub device (Max200 controller):
 
 | Entity | Type | Description |
 |---|---|---|
-| CAN bus connected | Binary sensor | Whether the integration currently has an active CAN bus connection |
-| CAN bus reconnections | Sensor | Number of times the integration has reconnected since the last Home Assistant restart |
+| CAN bus connected | Binary sensor | On when the bus connection is active |
+| CAN bus reconnections | Sensor | How many times the integration has reconnected since the last HA restart |
 
 ## Prerequisites
 
@@ -90,24 +86,24 @@ Created automatically on the hub device (Max200 controller):
     Assistant host and appearing as `/dev/ttyACM*`, `/dev/ttyUSB*`, or the
     Windows/macOS equivalent
 
-See the [Socketcand setup guide](#socketcand-setup-guide) below if you have
-not configured socketcand yet.
+See the [Socketcand setup guide](#socketcand-setup-guide) if you have not
+set it up yet.
 
 ## Socketcand setup guide
 
-`socketcand` acts as a TCP bridge between your CAN interface and network
-clients like this integration.
+`socketcand` is a TCP bridge between your CAN interface and network clients
+like this integration.
 
 ### 1. Bring up the CAN interface
 
-The Max200 operates at **125 kbit/s**.
+The Max200 runs at **125 kbit/s**.
 
 ```bash
 sudo ip link set can0 type can bitrate 125000
 sudo ip link set can0 up
 ```
 
-Replace `can0` with your actual interface name if it differs. Verify the
+Replace `can0` with your actual interface name if it differs. Check the
 interface is up with `ip link show can0`.
 
 ### 2. Start socketcand
@@ -156,7 +152,7 @@ Copy `custom_components/dobiss_sx_evolution/` into your Home Assistant
 
 ## Configuration
 
-Configuration is done entirely through the Home Assistant UI.
+Everything is configured through the Home Assistant UI.
 
 ### Connection setup
 
@@ -187,19 +183,18 @@ The integration probes the connection before saving. If the probe fails, a
 ### Adding modules
 
 After the connection entry is saved, add one **Module** subentry per physical
-DOBISS module in your installation. Open the DOBISS SX Evolution card in
-**Settings** > **Devices & services** and click **Add module**.
+DOBISS module. Open the DOBISS SX Evolution card in **Settings** > **Devices &
+services** and click **Add module**.
 
 | Field | Required | Description |
 |---|---|---|
 | Module letter | Yes | Single letter A-Z identifying the module on the bus |
 | Module name | No | Friendly name, defaults to `Module <letter>` |
-| Dimmable | No | Enable for dimmer modules, applies brightness support to every light on this module |
+| Dimmable | No | Enable for dimmer modules; applies brightness support to every light on this module |
 
 ### Configuring outputs
 
-From each module's **Reconfigure** menu you can manage the outputs assigned
-to that module:
+From each module's **Reconfigure** menu you can manage outputs:
 
 - **Add light**: output number and an optional friendly name
 - **Add shutter**: up-output number, down-output number and an optional friendly name
@@ -208,28 +203,28 @@ to that module:
 - **Edit module**: change the module letter, friendly name, or dimmable flag
 
 Each output number can only be claimed once per module. For shutters, the
-up and down output numbers must be distinct and unclaimed.
+up and down output numbers must be different and both unclaimed.
 
 ### Reconfiguring the connection
 
 If the `socketcand` host/port/interface or the USB device path changes, open
 the DOBISS SX Evolution card in **Settings** > **Devices & services** and use
-the **Reconfigure** option. The form pre-fills the current values. The entry
-is reloaded automatically on success.
+**Reconfigure**. The form pre-fills the current values. The entry reloads
+automatically on success.
 
 ## Services
 
 ### `dobiss_sx_evolution.refresh`
 
 Sends a state-dump request to every active DOBISS entry. Use this to
-resynchronize entity states without restarting Home Assistant.
+resync entity states without restarting Home Assistant.
 
 This service takes no parameters.
 
 ## Known limitations
 
-- Shutter position is not reported by the CAN bus. `is_closed` is always
-  unknown and `assumed_state` is `True`, so open/close/stop buttons remain
+- The CAN bus does not report shutter position. `is_closed` is always
+  unknown and `assumed_state` is `True`, so open/close/stop buttons stay
   available regardless of the last known state.
 
 ## Removing the integration
@@ -238,12 +233,11 @@ This service takes no parameters.
 2. Find the **DOBISS SX Evolution** card and click the three-dot menu.
 3. Select **Delete**.
 
-No changes are made to your DOBISS hardware or `socketcand` daemon.
+Nothing changes on your DOBISS hardware or `socketcand` daemon.
 
 ## Troubleshooting
 
-If the integration is misbehaving, work through these steps before filing an
-issue:
+If something is not working, try these steps before filing an issue:
 
 1. **Enable debug logging.** Open **Settings** > **Devices & services**, click
    the three-dot menu on the DOBISS SX Evolution entry, and select **Enable
@@ -256,14 +250,14 @@ issue:
 
 3. **Common errors:**
    - *Cannot connect*: the `socketcand` daemon is unreachable at the
-     configured host and port, **or** the USB CAN adapter cannot be opened.
+     configured host and port, or the USB CAN adapter cannot be opened.
      Check that the daemon is running (socketcand), or that the device path
      is correct and Home Assistant has permission to open it (USB).
    - *Cannot send*: a CAN frame write failed after the connection was
-     established. The integration will attempt to reconnect automatically.
+     established. The integration will try to reconnect automatically.
    - *Repair issue "cannot_connect"*: the CAN bus has been unreachable long
-     enough for backoff to reach its ceiling. Resolve the network or daemon
-     issue, the repair issue clears automatically on reconnection.
+     enough for backoff to hit its ceiling. Fix the network or daemon issue;
+     the repair clears automatically on reconnection.
 
 4. **File an issue** at
    [github.com/DaanVervacke/hass-dobiss-sx-evolution/issues](https://github.com/DaanVervacke/hass-dobiss-sx-evolution/issues)
