@@ -197,6 +197,18 @@
       }
     }
   },
+  "entity": {
+    "binary_sensor": {
+      "bus_connected": {
+        "name": "CAN bus connected"
+      }
+    },
+    "sensor": {
+      "reconnect_count": {
+        "name": "CAN bus reconnections"
+      }
+    }
+  },
   "services": {
     "refresh": {
       "name": "Refresh state",

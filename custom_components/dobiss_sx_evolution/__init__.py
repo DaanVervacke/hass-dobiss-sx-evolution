@@ -26,7 +26,12 @@ from .coordinator import DobissConfigEntry, DobissCoordinator, parse_output_list
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [Platform.COVER, Platform.LIGHT]
+PLATFORMS: list[Platform] = [
+    Platform.BINARY_SENSOR,
+    Platform.COVER,
+    Platform.LIGHT,
+    Platform.SENSOR,
+]
 
 _SERVICE_REFRESH = "refresh"
 
