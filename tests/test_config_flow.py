@@ -444,6 +444,11 @@ def test_validate_module_rejects_invalid():
     assert _validate_module(" ") == "invalid_module"
 
 
+def test_validate_module_rejects_non_ascii_letter() -> None:
+    """Cyrillic A (U+0410) looks like Latin A but is not ASCII."""
+    assert _validate_module("А") == "invalid_module"
+
+
 def test_occupied_outputs_light_only():
     outputs = {"1": {"type": "light", "name": "L1"}}
     assert _occupied_outputs_in_module(outputs) == {1}

@@ -65,7 +65,7 @@ def _probe_bus_sync(connection: ConnectionConfig) -> None:
 
 def _validate_module(module: str) -> str | None:
     """Return error key if module letter is invalid, else None."""
-    if len(module) != 1 or not module.isalpha():
+    if len(module) != 1 or not module.isascii() or not module.isalpha():
         return "invalid_module"
     return None
 
