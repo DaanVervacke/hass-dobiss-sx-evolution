@@ -15,10 +15,7 @@ from .coordinator import DobissConfigEntry
 
 def _serialise_states(states: dict[tuple[str, int], int]) -> dict[str, int]:
     """Flatten tuple-keyed state map to JSON-safe "M<mod>O<out>" strings."""
-    return {
-        f"M{module}O{output}": value
-        for (module, output), value in states.items()
-    }
+    return {f"M{module}O{output}": value for (module, output), value in states.items()}
 
 
 async def async_get_config_entry_diagnostics(

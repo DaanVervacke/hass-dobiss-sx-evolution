@@ -32,7 +32,11 @@ def _subentry_data() -> dict:
             "dimmable": False,
             "outputs": {
                 # Output 9 is the "up" relay; output 10 is "down".
-                "9": {"type": "shutter", "name": "Living Room Blind", "down_output": "10"},
+                "9": {
+                    "type": "shutter",
+                    "name": "Living Room Blind",
+                    "down_output": "10",
+                },
             },
         },
     }
@@ -89,7 +93,9 @@ async def test_cover_entity_id_has_sx_evo_prefix(hass: HomeAssistant) -> None:
     await _setup(hass)
 
     state = hass.states.get("cover.sx_evo_module_a_output_9_living_room_blind")
-    assert state is not None, "cover.sx_evo_module_a_output_9_living_room_blind was not found"
+    assert state is not None, (
+        "cover.sx_evo_module_a_output_9_living_room_blind was not found"
+    )
     friendly = state.attributes.get("friendly_name", "")
     assert "sx_evo" not in friendly.lower(), (
         f"Friendly name must not carry the sx_evo prefix, got: {friendly!r}"

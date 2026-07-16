@@ -1,4 +1,5 @@
 """Tests for the DOBISS SX Evolution config flow."""
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
@@ -75,7 +76,9 @@ async def _setup_loaded_entry(
     return entry
 
 
-async def test_user_flow_success(hass: HomeAssistant, mock_probe, mock_controller) -> None:
+async def test_user_flow_success(
+    hass: HomeAssistant, mock_probe, mock_controller
+) -> None:
     """Happy-path user flow creates a config entry."""
     # Step 1: Show connection type selector
     result = await hass.config_entries.flow.async_init(
@@ -213,9 +216,7 @@ async def test_user_flow_connection_failure(hass: HomeAssistant) -> None:
     assert result3["errors"] == {"base": "cannot_connect"}
 
 
-async def test_user_flow_already_configured(
-    hass: HomeAssistant, mock_probe
-) -> None:
+async def test_user_flow_already_configured(hass: HomeAssistant, mock_probe) -> None:
     """Second entry with the same host/port/interface aborts."""
     # The unique_id format has changed to include connection_type
     existing = MockConfigEntry(
@@ -352,17 +353,13 @@ async def test_reauth_flow_prefills_current_values(hass: HomeAssistant) -> None:
     assert result["step_id"] == "reauth_socketcand"
 
     assert result["data_schema"] is not None
-    defaults = {
-        str(key): key.default() for key in result["data_schema"].schema
-    }
+    defaults = {str(key): key.default() for key in result["data_schema"].schema}
     assert defaults["host"] == "10.0.0.5"
     assert defaults["port"] == 1234
     assert defaults["interface"] == "vcan0"
 
 
-async def test_reconfigure_socketcand_success(
-    hass: HomeAssistant, mock_probe
-) -> None:
+async def test_reconfigure_socketcand_success(hass: HomeAssistant, mock_probe) -> None:
     """Reconfigure flow updates connection params and reloads."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -555,12 +552,14 @@ async def test_subentry_add_module_duplicate(
     entry = await _setup_loaded_entry(
         hass,
         mock_controller,
-        subentries_data=[{
-            "subentry_type": SUBENTRY_TYPE_MODULE,
-            "title": "Module A",
-            "unique_id": "module:A",
-            "data": {"module": "A", "dimmable": False, "outputs": {}},
-        }],
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_MODULE,
+                "title": "Module A",
+                "unique_id": "module:A",
+                "data": {"module": "A", "dimmable": False, "outputs": {}},
+            }
+        ],
     )
 
     result = await hass.config_entries.subentries.async_init(
@@ -587,12 +586,14 @@ async def test_subentry_reconfigure_shows_menu(
     entry = await _setup_loaded_entry(
         hass,
         mock_controller,
-        subentries_data=[{
-            "subentry_type": SUBENTRY_TYPE_MODULE,
-            "title": "Module A",
-            "unique_id": "module:A",
-            "data": {"module": "A", "dimmable": False, "outputs": {}},
-        }],
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_MODULE,
+                "title": "Module A",
+                "unique_id": "module:A",
+                "data": {"module": "A", "dimmable": False, "outputs": {}},
+            }
+        ],
     )
     sub_id = next(iter(entry.subentries))
 
@@ -616,16 +617,18 @@ async def test_subentry_reconfigure_menu_has_remove_when_outputs_exist(
     entry = await _setup_loaded_entry(
         hass,
         mock_controller,
-        subentries_data=[{
-            "subentry_type": SUBENTRY_TYPE_MODULE,
-            "title": "Module A",
-            "unique_id": "module:A",
-            "data": {
-                "module": "A",
-                "dimmable": False,
-                "outputs": {"1": {"type": "light", "name": "L1"}},
-            },
-        }],
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_MODULE,
+                "title": "Module A",
+                "unique_id": "module:A",
+                "data": {
+                    "module": "A",
+                    "dimmable": False,
+                    "outputs": {"1": {"type": "light", "name": "L1"}},
+                },
+            }
+        ],
     )
     sub_id = next(iter(entry.subentries))
 
@@ -642,19 +645,19 @@ async def test_subentry_reconfigure_menu_has_remove_when_outputs_exist(
 # ---------------------------------------------------------------------------
 
 
-async def test_subentry_add_light_success(
-    hass: HomeAssistant, mock_controller
-) -> None:
+async def test_subentry_add_light_success(hass: HomeAssistant, mock_controller) -> None:
     """Adding a light output updates the subentry data."""
     entry = await _setup_loaded_entry(
         hass,
         mock_controller,
-        subentries_data=[{
-            "subentry_type": SUBENTRY_TYPE_MODULE,
-            "title": "Module A",
-            "unique_id": "module:A",
-            "data": {"module": "A", "dimmable": False, "outputs": {}},
-        }],
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_MODULE,
+                "title": "Module A",
+                "unique_id": "module:A",
+                "data": {"module": "A", "dimmable": False, "outputs": {}},
+            }
+        ],
     )
     sub_id = next(iter(entry.subentries))
 
@@ -689,12 +692,14 @@ async def test_subentry_add_light_invalid_output(
     entry = await _setup_loaded_entry(
         hass,
         mock_controller,
-        subentries_data=[{
-            "subentry_type": SUBENTRY_TYPE_MODULE,
-            "title": "Module A",
-            "unique_id": "module:A",
-            "data": {"module": "A", "dimmable": False, "outputs": {}},
-        }],
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_MODULE,
+                "title": "Module A",
+                "unique_id": "module:A",
+                "data": {"module": "A", "dimmable": False, "outputs": {}},
+            }
+        ],
     )
     sub_id = next(iter(entry.subentries))
 
@@ -721,12 +726,14 @@ async def test_subentry_add_light_output_too_high(
     entry = await _setup_loaded_entry(
         hass,
         mock_controller,
-        subentries_data=[{
-            "subentry_type": SUBENTRY_TYPE_MODULE,
-            "title": "Module A",
-            "unique_id": "module:A",
-            "data": {"module": "A", "dimmable": False, "outputs": {}},
-        }],
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_MODULE,
+                "title": "Module A",
+                "unique_id": "module:A",
+                "data": {"module": "A", "dimmable": False, "outputs": {}},
+            }
+        ],
     )
     sub_id = next(iter(entry.subentries))
 
@@ -753,16 +760,18 @@ async def test_subentry_add_light_duplicate_output(
     entry = await _setup_loaded_entry(
         hass,
         mock_controller,
-        subentries_data=[{
-            "subentry_type": SUBENTRY_TYPE_MODULE,
-            "title": "Module A",
-            "unique_id": "module:A",
-            "data": {
-                "module": "A",
-                "dimmable": False,
-                "outputs": {"1": {"type": "light", "name": "L1"}},
-            },
-        }],
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_MODULE,
+                "title": "Module A",
+                "unique_id": "module:A",
+                "data": {
+                    "module": "A",
+                    "dimmable": False,
+                    "outputs": {"1": {"type": "light", "name": "L1"}},
+                },
+            }
+        ],
     )
     sub_id = next(iter(entry.subentries))
 
@@ -794,12 +803,14 @@ async def test_subentry_add_shutter_success(
     entry = await _setup_loaded_entry(
         hass,
         mock_controller,
-        subentries_data=[{
-            "subentry_type": SUBENTRY_TYPE_MODULE,
-            "title": "Module A",
-            "unique_id": "module:A",
-            "data": {"module": "A", "dimmable": False, "outputs": {}},
-        }],
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_MODULE,
+                "title": "Module A",
+                "unique_id": "module:A",
+                "data": {"module": "A", "dimmable": False, "outputs": {}},
+            }
+        ],
     )
     sub_id = next(iter(entry.subentries))
 
@@ -834,12 +845,14 @@ async def test_subentry_add_shutter_same_output(
     entry = await _setup_loaded_entry(
         hass,
         mock_controller,
-        subentries_data=[{
-            "subentry_type": SUBENTRY_TYPE_MODULE,
-            "title": "Module A",
-            "unique_id": "module:A",
-            "data": {"module": "A", "dimmable": False, "outputs": {}},
-        }],
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_MODULE,
+                "title": "Module A",
+                "unique_id": "module:A",
+                "data": {"module": "A", "dimmable": False, "outputs": {}},
+            }
+        ],
     )
     sub_id = next(iter(entry.subentries))
 
@@ -866,12 +879,14 @@ async def test_subentry_add_shutter_down_output_zero_rejected(
     entry = await _setup_loaded_entry(
         hass,
         mock_controller,
-        subentries_data=[{
-            "subentry_type": SUBENTRY_TYPE_MODULE,
-            "title": "Module A",
-            "unique_id": "module:A",
-            "data": {"module": "A", "dimmable": False, "outputs": {}},
-        }],
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_MODULE,
+                "title": "Module A",
+                "unique_id": "module:A",
+                "data": {"module": "A", "dimmable": False, "outputs": {}},
+            }
+        ],
     )
     sub_id = next(iter(entry.subentries))
 
@@ -898,12 +913,14 @@ async def test_subentry_add_shutter_down_output_too_high(
     entry = await _setup_loaded_entry(
         hass,
         mock_controller,
-        subentries_data=[{
-            "subentry_type": SUBENTRY_TYPE_MODULE,
-            "title": "Module A",
-            "unique_id": "module:A",
-            "data": {"module": "A", "dimmable": False, "outputs": {}},
-        }],
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_MODULE,
+                "title": "Module A",
+                "unique_id": "module:A",
+                "data": {"module": "A", "dimmable": False, "outputs": {}},
+            }
+        ],
     )
     sub_id = next(iter(entry.subentries))
 
@@ -930,16 +947,18 @@ async def test_subentry_add_shutter_up_output_occupied(
     entry = await _setup_loaded_entry(
         hass,
         mock_controller,
-        subentries_data=[{
-            "subentry_type": SUBENTRY_TYPE_MODULE,
-            "title": "Module A",
-            "unique_id": "module:A",
-            "data": {
-                "module": "A",
-                "dimmable": False,
-                "outputs": {"9": {"type": "light", "name": "L9"}},
-            },
-        }],
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_MODULE,
+                "title": "Module A",
+                "unique_id": "module:A",
+                "data": {
+                    "module": "A",
+                    "dimmable": False,
+                    "outputs": {"9": {"type": "light", "name": "L9"}},
+                },
+            }
+        ],
     )
     sub_id = next(iter(entry.subentries))
 
@@ -966,16 +985,18 @@ async def test_subentry_add_shutter_down_output_occupied(
     entry = await _setup_loaded_entry(
         hass,
         mock_controller,
-        subentries_data=[{
-            "subentry_type": SUBENTRY_TYPE_MODULE,
-            "title": "Module A",
-            "unique_id": "module:A",
-            "data": {
-                "module": "A",
-                "dimmable": False,
-                "outputs": {"10": {"type": "light", "name": "L10"}},
-            },
-        }],
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_MODULE,
+                "title": "Module A",
+                "unique_id": "module:A",
+                "data": {
+                    "module": "A",
+                    "dimmable": False,
+                    "outputs": {"10": {"type": "light", "name": "L10"}},
+                },
+            }
+        ],
     )
     sub_id = next(iter(entry.subentries))
 
@@ -1007,12 +1028,14 @@ async def test_subentry_add_switch_success(
     entry = await _setup_loaded_entry(
         hass,
         mock_controller,
-        subentries_data=[{
-            "subentry_type": SUBENTRY_TYPE_MODULE,
-            "title": "Module A",
-            "unique_id": "module:A",
-            "data": {"module": "A", "dimmable": False, "outputs": {}},
-        }],
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_MODULE,
+                "title": "Module A",
+                "unique_id": "module:A",
+                "data": {"module": "A", "dimmable": False, "outputs": {}},
+            }
+        ],
     )
     sub_id = next(iter(entry.subentries))
 
@@ -1047,12 +1070,14 @@ async def test_subentry_add_switch_invalid_output(
     entry = await _setup_loaded_entry(
         hass,
         mock_controller,
-        subentries_data=[{
-            "subentry_type": SUBENTRY_TYPE_MODULE,
-            "title": "Module A",
-            "unique_id": "module:A",
-            "data": {"module": "A", "dimmable": False, "outputs": {}},
-        }],
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_MODULE,
+                "title": "Module A",
+                "unique_id": "module:A",
+                "data": {"module": "A", "dimmable": False, "outputs": {}},
+            }
+        ],
     )
     sub_id = next(iter(entry.subentries))
 
@@ -1086,16 +1111,18 @@ async def test_subentry_add_switch_duplicate_output(
     entry = await _setup_loaded_entry(
         hass,
         mock_controller,
-        subentries_data=[{
-            "subentry_type": SUBENTRY_TYPE_MODULE,
-            "title": "Module A",
-            "unique_id": "module:A",
-            "data": {
-                "module": "A",
-                "dimmable": False,
-                "outputs": {"1": {"type": "light", "name": "L1"}},
-            },
-        }],
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_MODULE,
+                "title": "Module A",
+                "unique_id": "module:A",
+                "data": {
+                    "module": "A",
+                    "dimmable": False,
+                    "outputs": {"1": {"type": "light", "name": "L1"}},
+                },
+            }
+        ],
     )
     sub_id = next(iter(entry.subentries))
 
@@ -1127,16 +1154,18 @@ async def test_subentry_remove_output_success(
     entry = await _setup_loaded_entry(
         hass,
         mock_controller,
-        subentries_data=[{
-            "subentry_type": SUBENTRY_TYPE_MODULE,
-            "title": "Module A",
-            "unique_id": "module:A",
-            "data": {
-                "module": "A",
-                "dimmable": False,
-                "outputs": {"1": {"type": "light", "name": "L1"}},
-            },
-        }],
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_MODULE,
+                "title": "Module A",
+                "unique_id": "module:A",
+                "data": {
+                    "module": "A",
+                    "dimmable": False,
+                    "outputs": {"1": {"type": "light", "name": "L1"}},
+                },
+            }
+        ],
     )
     sub_id = next(iter(entry.subentries))
 
@@ -1175,12 +1204,14 @@ async def test_subentry_remove_output_no_outputs_aborts(
     entry = await _setup_loaded_entry(
         hass,
         mock_controller,
-        subentries_data=[{
-            "subentry_type": SUBENTRY_TYPE_MODULE,
-            "title": "Module A",
-            "unique_id": "module:A",
-            "data": {"module": "A", "dimmable": False, "outputs": {}},
-        }],
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_MODULE,
+                "title": "Module A",
+                "unique_id": "module:A",
+                "data": {"module": "A", "dimmable": False, "outputs": {}},
+            }
+        ],
     )
     sub_id = next(iter(entry.subentries))
 
@@ -1207,16 +1238,18 @@ async def test_subentry_remove_output_invalid_output(
     entry = await _setup_loaded_entry(
         hass,
         mock_controller,
-        subentries_data=[{
-            "subentry_type": SUBENTRY_TYPE_MODULE,
-            "title": "Module A",
-            "unique_id": "module:A",
-            "data": {
-                "module": "A",
-                "dimmable": False,
-                "outputs": {"1": {"type": "light", "name": "L1"}},
-            },
-        }],
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_MODULE,
+                "title": "Module A",
+                "unique_id": "module:A",
+                "data": {
+                    "module": "A",
+                    "dimmable": False,
+                    "outputs": {"1": {"type": "light", "name": "L1"}},
+                },
+            }
+        ],
     )
     sub_id = next(iter(entry.subentries))
 
@@ -1243,12 +1276,14 @@ async def test_subentry_edit_module_rename(
     entry = await _setup_loaded_entry(
         hass,
         mock_controller,
-        subentries_data=[{
-            "subentry_type": SUBENTRY_TYPE_MODULE,
-            "title": "Module A",
-            "unique_id": "module:A",
-            "data": {"module": "A", "dimmable": False, "outputs": {}},
-        }],
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_MODULE,
+                "title": "Module A",
+                "unique_id": "module:A",
+                "data": {"module": "A", "dimmable": False, "outputs": {}},
+            }
+        ],
     )
     sub_id = next(iter(entry.subentries))
 
@@ -1283,12 +1318,14 @@ async def test_subentry_edit_module_invalid_letter(
     entry = await _setup_loaded_entry(
         hass,
         mock_controller,
-        subentries_data=[{
-            "subentry_type": SUBENTRY_TYPE_MODULE,
-            "title": "Module A",
-            "unique_id": "module:A",
-            "data": {"module": "A", "dimmable": False, "outputs": {}},
-        }],
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_MODULE,
+                "title": "Module A",
+                "unique_id": "module:A",
+                "data": {"module": "A", "dimmable": False, "outputs": {}},
+            }
+        ],
     )
     sub_id = next(iter(entry.subentries))
 
@@ -1332,8 +1369,7 @@ async def test_subentry_edit_module_duplicate_letter(
     )
     # Get the subentry ID for module A
     sub_id = next(
-        sid for sid, sub in entry.subentries.items()
-        if sub.data["module"] == "A"
+        sid for sid, sub in entry.subentries.items() if sub.data["module"] == "A"
     )
 
     result = await hass.config_entries.subentries.async_init(

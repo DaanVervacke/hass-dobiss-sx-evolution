@@ -48,7 +48,8 @@ async def _async_handle_refresh(call: ServiceCall) -> None:
             await coordinator.controller.async_request_dump()
         except Exception:  # noqa: BLE001
             _LOGGER.warning(
-                "Failed to send refresh request for entry %s", entry.entry_id,
+                "Failed to send refresh request for entry %s",
+                entry.entry_id,
                 exc_info=True,
             )
 
@@ -94,9 +95,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: DobissConfigEntry) -> bo
     # the current connection key and module set so the listener can diff
     # against the new entry and choose between a full bus reconnect and a
     # lighter platform-only reload (e.g. adding an output to an existing module).
-    entry.async_on_unload(
-        entry.add_update_listener(_make_reload_listener(entry))
-    )
+    entry.async_on_unload(entry.add_update_listener(_make_reload_listener(entry)))
 
     if not hass.services.has_service(DOMAIN, _SERVICE_REFRESH):
         hass.services.async_register(
@@ -106,9 +105,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: DobissConfigEntry) -> bo
     return True
 
 
-type _ConnectionKey = tuple[
-    str | None, str | None, int | None, str | None, str | None
-]
+type _ConnectionKey = tuple[str | None, str | None, int | None, str | None, str | None]
 
 
 def _connection_key(entry: DobissConfigEntry) -> _ConnectionKey:

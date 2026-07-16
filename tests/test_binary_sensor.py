@@ -13,7 +13,9 @@ from custom_components.dobiss_sx_evolution.const import (
 from .conftest import MOCK_CONFIG
 
 
-async def test_bus_connected_binary_sensor(hass: HomeAssistant, mock_controller) -> None:
+async def test_bus_connected_binary_sensor(
+    hass: HomeAssistant, mock_controller
+) -> None:
     """Binary sensor must reflect controller.is_bus_connected."""
     entry = MockConfigEntry(
         domain=DOMAIN,

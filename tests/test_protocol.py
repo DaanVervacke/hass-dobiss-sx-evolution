@@ -1,4 +1,5 @@
 """Tests for protocol.py pure functions."""
+
 from __future__ import annotations
 
 from custom_components.dobiss_sx_evolution.protocol import (
@@ -23,7 +24,7 @@ def test_parse_state_frame_valid_basic():
 
 def test_parse_state_frame_valid_various():
     """Zero-indexed output 5 → 1-indexed 6; full-brightness state 0xFF."""
-    result = parse_state_frame(b"\x00A\x05\xFF")
+    result = parse_state_frame(b"\x00A\x05\xff")
     assert result is not None
     assert result.module == "A"
     assert result.output == 6  # 0-indexed 5 → 1-indexed 6
@@ -49,7 +50,7 @@ def test_parse_state_frame_too_short_returns_none():
 
 def test_parse_state_frame_non_ascii_module_returns_none():
     """A non-ASCII module byte (e.g. 0xFF) must return None."""
-    assert parse_state_frame(b"\x00\xFF\x00\x01") is None
+    assert parse_state_frame(b"\x00\xff\x00\x01") is None
     assert parse_state_frame(b"\x00\x80\x00\x00") is None
 
 

@@ -4,6 +4,7 @@ Switches are generic on/off relays: the CAN protocol is identical to a
 non-dimmable light (state 1/0), so these tests mirror test_light.py's
 non-dimmable coverage without any brightness/optimistic-tracking concerns.
 """
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch

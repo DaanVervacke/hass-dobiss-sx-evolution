@@ -97,7 +97,9 @@ class DobissCoordinator(DataUpdateCoordinator[dict[OutputKey, int]]):
 
         lights, dimmers, shutters, switches = parse_output_lists(entry)
 
-        connection_type = entry.data.get(CONF_CONNECTION_TYPE, CONNECTION_TYPE_SOCKETCAND)
+        connection_type = entry.data.get(
+            CONF_CONNECTION_TYPE, CONNECTION_TYPE_SOCKETCAND
+        )
         connection: ConnectionConfig
         if connection_type == CONNECTION_TYPE_SOCKETCAND:
             connection = SocketcandConnection.from_config(entry.data)

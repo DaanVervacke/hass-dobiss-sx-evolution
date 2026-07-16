@@ -3,6 +3,7 @@
 Uses pytest-homeassistant-custom-component (PHACC) so tests can spin up a real
 HomeAssistant instance and load this custom integration from ``custom_components/``.
 """
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch

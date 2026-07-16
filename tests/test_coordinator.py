@@ -1,4 +1,5 @@
 """Tests for DobissCoordinator."""
+
 from __future__ import annotations
 
 from datetime import timedelta
@@ -20,7 +21,10 @@ from custom_components.dobiss_sx_evolution.const import (
     DOMAIN,
     SUBENTRY_TYPE_MODULE,
 )
-from custom_components.dobiss_sx_evolution.controller import ShutterConfig, UsbConnection
+from custom_components.dobiss_sx_evolution.controller import (
+    ShutterConfig,
+    UsbConnection,
+)
 from custom_components.dobiss_sx_evolution.coordinator import (
     DobissCoordinator,
     parse_output_lists,
@@ -122,9 +126,7 @@ async def test_coordinator_listener_invokes_update(
     assert coordinator.last_update_success is True
 
 
-async def test_coordinator_usb_connection(
-    hass: HomeAssistant, mock_controller
-) -> None:
+async def test_coordinator_usb_connection(hass: HomeAssistant, mock_controller) -> None:
     """Coordinator must construct a UsbConnection for USB entries."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -151,7 +153,10 @@ async def test_coordinator_coalesces_burst_notifications(
 ) -> None:
     """Multiple rapid state changes should result in one coordinator update."""
     entry = MockConfigEntry(
-        domain=DOMAIN, data=_make_entry_data(), title="DOBISS", version=1,
+        domain=DOMAIN,
+        data=_make_entry_data(),
+        title="DOBISS",
+        version=1,
     )
     entry.add_to_hass(hass)
     await hass.config_entries.async_setup(entry.entry_id)
@@ -190,16 +195,18 @@ def test_parse_output_lists_light_on_non_dimmable_module():
     entry = MockConfigEntry(
         domain=DOMAIN,
         data=MOCK_CONFIG,
-        subentries_data=[{
-            "subentry_type": SUBENTRY_TYPE_MODULE,
-            "title": "Module A",
-            "unique_id": "module:A",
-            "data": {
-                "module": "A",
-                "dimmable": False,
-                "outputs": {"1": {"type": "light", "name": "L1"}},
-            },
-        }],
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_MODULE,
+                "title": "Module A",
+                "unique_id": "module:A",
+                "data": {
+                    "module": "A",
+                    "dimmable": False,
+                    "outputs": {"1": {"type": "light", "name": "L1"}},
+                },
+            }
+        ],
     )
     lights, dimmers, shutters, switches = parse_output_lists(entry)
     assert ("A", 1) in lights
@@ -212,16 +219,18 @@ def test_parse_output_lists_dimmable_module():
     entry = MockConfigEntry(
         domain=DOMAIN,
         data=MOCK_CONFIG,
-        subentries_data=[{
-            "subentry_type": SUBENTRY_TYPE_MODULE,
-            "title": "Module B",
-            "unique_id": "module:B",
-            "data": {
-                "module": "B",
-                "dimmable": True,
-                "outputs": {"2": {"type": "light", "name": "D1"}},
-            },
-        }],
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_MODULE,
+                "title": "Module B",
+                "unique_id": "module:B",
+                "data": {
+                    "module": "B",
+                    "dimmable": True,
+                    "outputs": {"2": {"type": "light", "name": "D1"}},
+                },
+            }
+        ],
     )
     lights, dimmers, shutters, switches = parse_output_lists(entry)
     assert lights == []
@@ -234,18 +243,20 @@ def test_parse_output_lists_shutter():
     entry = MockConfigEntry(
         domain=DOMAIN,
         data=MOCK_CONFIG,
-        subentries_data=[{
-            "subentry_type": SUBENTRY_TYPE_MODULE,
-            "title": "Module A",
-            "unique_id": "module:A",
-            "data": {
-                "module": "A",
-                "dimmable": False,
-                "outputs": {
-                    "9": {"type": "shutter", "down_output": "10", "name": "S1"},
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_MODULE,
+                "title": "Module A",
+                "unique_id": "module:A",
+                "data": {
+                    "module": "A",
+                    "dimmable": False,
+                    "outputs": {
+                        "9": {"type": "shutter", "down_output": "10", "name": "S1"},
+                    },
                 },
-            },
-        }],
+            }
+        ],
     )
     lights, dimmers, shutters, switches = parse_output_lists(entry)
     assert lights == []
@@ -259,16 +270,18 @@ def test_parse_output_lists_switch():
     entry = MockConfigEntry(
         domain=DOMAIN,
         data=MOCK_CONFIG,
-        subentries_data=[{
-            "subentry_type": SUBENTRY_TYPE_MODULE,
-            "title": "Module A",
-            "unique_id": "module:A",
-            "data": {
-                "module": "A",
-                "dimmable": False,
-                "outputs": {"3": {"type": "switch", "name": "Buzzer"}},
-            },
-        }],
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_MODULE,
+                "title": "Module A",
+                "unique_id": "module:A",
+                "data": {
+                    "module": "A",
+                    "dimmable": False,
+                    "outputs": {"3": {"type": "switch", "name": "Buzzer"}},
+                },
+            }
+        ],
     )
     lights, dimmers, shutters, switches = parse_output_lists(entry)
     assert lights == []

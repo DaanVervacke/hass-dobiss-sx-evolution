@@ -4,6 +4,7 @@ Covers the bug where DobissLight always received dimmable=False because
 async_setup_entry was reading the "dimmable" key from the per-output dict
 (where it is never stored) instead of from the module-level subentry data.
 """
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -51,9 +52,7 @@ def _subentry_data(*, dimmable: bool, title: str = "Module A") -> dict:
 def _make_entry(
     hass: HomeAssistant, *, dimmable: bool, title: str = "Module A"
 ) -> MockConfigEntry:
-    """Build a config entry with one module subentry containing a single light output.
-
-    """
+    """Build a config entry with one module subentry containing a single light output."""
     entry_data = {
         "connection_type": CONNECTION_TYPE_SOCKETCAND,
         **MOCK_CONFIG,

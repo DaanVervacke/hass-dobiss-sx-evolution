@@ -1,4 +1,5 @@
 """Tests for the dobiss_sx_evolution integration setup and unload."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
@@ -133,7 +134,9 @@ async def test_reload_listener_output_only_change_skips_full_reload(
         data=_make_entry_data(),
         title="DOBISS",
         version=1,
-        subentries_data=[_make_subentry_data("A", {"1": {"type": "light", "name": "L1"}})],
+        subentries_data=[
+            _make_subentry_data("A", {"1": {"type": "light", "name": "L1"}})
+        ],
     )
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
@@ -181,7 +184,10 @@ async def test_reload_listener_output_only_change_skips_full_reload(
                 patch.object(
                     hass.config_entries,
                     "async_unload_platforms",
-                    new=AsyncMock(return_value=True, side_effect=lambda e, p: unload_calls.append(1) or True),
+                    new=AsyncMock(
+                        return_value=True,
+                        side_effect=lambda e, p: unload_calls.append(1) or True,
+                    ),
                 ),
                 patch.object(
                     hass.config_entries,
@@ -216,7 +222,9 @@ async def test_reload_listener_output_only_suppresses_dump_failure(
         data=_make_entry_data(),
         title="DOBISS",
         version=1,
-        subentries_data=[_make_subentry_data("A", {"1": {"type": "light", "name": "L1"}})],
+        subentries_data=[
+            _make_subentry_data("A", {"1": {"type": "light", "name": "L1"}})
+        ],
     )
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
@@ -246,13 +254,17 @@ async def test_reload_listener_output_only_suppresses_dump_failure(
     listener = _make_reload_listener(entry)
 
     with (
-        patch.object(hass.config_entries, "async_reload", new=AsyncMock()) as full_reload,
+        patch.object(
+            hass.config_entries, "async_reload", new=AsyncMock()
+        ) as full_reload,
         patch.object(
             hass.config_entries,
             "async_unload_platforms",
             new=AsyncMock(return_value=True),
         ),
-        patch.object(hass.config_entries, "async_forward_entry_setups", new=AsyncMock()),
+        patch.object(
+            hass.config_entries, "async_forward_entry_setups", new=AsyncMock()
+        ),
     ):
         await listener(hass, updated_entry)
 
@@ -291,7 +303,9 @@ async def test_reload_listener_new_module_triggers_full_reload(
     listener = _make_reload_listener(entry)
 
     with patch.object(
-        hass.config_entries, "async_reload", new=AsyncMock(side_effect=lambda eid: reload_calls.append(eid))
+        hass.config_entries,
+        "async_reload",
+        new=AsyncMock(side_effect=lambda eid: reload_calls.append(eid)),
     ):
         await listener(hass, updated_entry)
 
@@ -329,7 +343,9 @@ async def test_reload_listener_connection_change_triggers_full_reload(
     listener = _make_reload_listener(entry)
 
     with patch.object(
-        hass.config_entries, "async_reload", new=AsyncMock(side_effect=lambda eid: reload_calls.append(eid))
+        hass.config_entries,
+        "async_reload",
+        new=AsyncMock(side_effect=lambda eid: reload_calls.append(eid)),
     ):
         await listener(hass, updated_entry)
 
@@ -397,13 +413,17 @@ async def test_reload_listener_title_rename_updates_device_registry(
 
     listener = _make_reload_listener(entry)
     with (
-        patch.object(hass.config_entries, "async_reload", new=AsyncMock()) as full_reload,
+        patch.object(
+            hass.config_entries, "async_reload", new=AsyncMock()
+        ) as full_reload,
         patch.object(
             hass.config_entries,
             "async_unload_platforms",
             new=AsyncMock(return_value=True),
         ),
-        patch.object(hass.config_entries, "async_forward_entry_setups", new=AsyncMock()),
+        patch.object(
+            hass.config_entries, "async_forward_entry_setups", new=AsyncMock()
+        ),
     ):
         await listener(hass, updated_entry)
 
@@ -518,9 +538,7 @@ async def test_remove_device_blocks_hub_device(
 # ---------------------------------------------------------------------------
 
 
-async def test_refresh_service_calls_dump(
-    hass: HomeAssistant, mock_controller
-) -> None:
+async def test_refresh_service_calls_dump(hass: HomeAssistant, mock_controller) -> None:
     """The refresh service must call async_request_dump on each loaded entry."""
     entry = MockConfigEntry(
         domain=DOMAIN, data=_make_entry_data(), title="DOBISS", version=1
@@ -565,9 +583,7 @@ async def test_refresh_service_catches_dump_error(
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
-    mock_controller.async_request_dump = AsyncMock(
-        side_effect=Exception("bus error")
-    )
+    mock_controller.async_request_dump = AsyncMock(side_effect=Exception("bus error"))
 
     # Must not raise.
     await hass.services.async_call(DOMAIN, "refresh", blocking=True)

@@ -1,4 +1,5 @@
 """Tests for repair issue creation/deletion in DobissController."""
+
 from __future__ import annotations
 
 import asyncio
@@ -38,7 +39,9 @@ def _make_controller(
     )
 
 
-def _make_entry(hass: HomeAssistant, entry_id: str = "test_entry_id") -> MockConfigEntry:
+def _make_entry(
+    hass: HomeAssistant, entry_id: str = "test_entry_id"
+) -> MockConfigEntry:
     """Register a minimal config entry with hass and return it."""
     from custom_components.dobiss_sx_evolution.const import CONNECTION_TYPE_SOCKETCAND
 

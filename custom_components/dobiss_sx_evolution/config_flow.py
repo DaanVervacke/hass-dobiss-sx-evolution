@@ -124,9 +124,7 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
     async def _build_usb_device_options(self) -> list[SelectOptionDict]:
         from homeassistant.components import usb  # noqa: PLC0415
 
-        ports = await self.hass.async_add_executor_job(
-            serial.tools.list_ports.comports
-        )
+        ports = await self.hass.async_add_executor_job(serial.tools.list_ports.comports)
         options: list[SelectOptionDict] = []
         for port in ports:
             device_path = await self.hass.async_add_executor_job(
@@ -193,9 +191,7 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
             step_id="socketcand", data_schema=CONNECTION_SCHEMA, errors=errors
         )
 
-    async def async_step_usb(
-        self, discovery_info: UsbServiceInfo
-    ) -> ConfigFlowResult:
+    async def async_step_usb(self, discovery_info: UsbServiceInfo) -> ConfigFlowResult:
         """Handle USB discovery of a CAN adapter by Home Assistant core."""
         self._discovered_usb_device = discovery_info.device
         return await self.async_step_usb_manual(None)
@@ -249,11 +245,11 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
             step_id="usb_manual", data_schema=schema, errors=errors
         )
 
-    async def async_step_reauth(
-        self, entry_data: dict[str, Any]
-    ) -> ConfigFlowResult:
+    async def async_step_reauth(self, entry_data: dict[str, Any]) -> ConfigFlowResult:
         """Handle re-authentication when the connection details change."""
-        connection_type = entry_data.get(CONF_CONNECTION_TYPE, CONNECTION_TYPE_SOCKETCAND)
+        connection_type = entry_data.get(
+            CONF_CONNECTION_TYPE, CONNECTION_TYPE_SOCKETCAND
+        )
 
         if connection_type == CONNECTION_TYPE_SOCKETCAND:
             self._reauth_defaults = {
@@ -293,11 +289,15 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
                     reason="reauth_successful",
                 )
 
-        defaults = user_input or getattr(self, "_reauth_defaults", {}) or {
-            CONF_HOST: entry.data.get(CONF_HOST, ""),
-            CONF_PORT: entry.data.get(CONF_PORT, DEFAULT_PORT),
-            CONF_INTERFACE: entry.data.get(CONF_INTERFACE, DEFAULT_INTERFACE),
-        }
+        defaults = (
+            user_input
+            or getattr(self, "_reauth_defaults", {})
+            or {
+                CONF_HOST: entry.data.get(CONF_HOST, ""),
+                CONF_PORT: entry.data.get(CONF_PORT, DEFAULT_PORT),
+                CONF_INTERFACE: entry.data.get(CONF_INTERFACE, DEFAULT_INTERFACE),
+            }
+        )
         schema = vol.Schema(
             {
                 vol.Required(CONF_HOST, default=defaults.get(CONF_HOST, "")): str,
@@ -413,12 +413,10 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
         schema = vol.Schema(
             {
                 vol.Required(CONF_HOST, default=defaults[CONF_HOST]): str,
-                vol.Required(
-                    CONF_PORT, default=defaults[CONF_PORT]
-                ): vol.All(int, vol.Range(min=1, max=65535)),
-                vol.Required(
-                    CONF_INTERFACE, default=defaults[CONF_INTERFACE]
-                ): str,
+                vol.Required(CONF_PORT, default=defaults[CONF_PORT]): vol.All(
+                    int, vol.Range(min=1, max=65535)
+                ),
+                vol.Required(CONF_INTERFACE, default=defaults[CONF_INTERFACE]): str,
             }
         )
         return self.async_show_form(
@@ -643,15 +641,11 @@ class ModuleSubentryFlowHandler(ConfigSubentryFlow):
         defaults = user_input or {}
         schema = vol.Schema(
             {
-                vol.Required(
-                    "up_output", default=defaults.get("up_output", 1)
-                ): int,
+                vol.Required("up_output", default=defaults.get("up_output", 1)): int,
                 vol.Required(
                     "down_output", default=defaults.get("down_output", 2)
                 ): int,
-                vol.Optional(
-                    CONF_NAME, default=defaults.get(CONF_NAME, "")
-                ): str,
+                vol.Optional(CONF_NAME, default=defaults.get(CONF_NAME, "")): str,
             }
         )
         return self.async_show_form(

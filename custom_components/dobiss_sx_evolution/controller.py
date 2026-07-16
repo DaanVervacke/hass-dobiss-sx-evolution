@@ -145,9 +145,7 @@ class UsbConnection:
             if self.can_interface == "slcan"
             else {"baudrate": self.baudrate}
         )
-        return can.Bus(
-            interface=self.can_interface, channel=self.device, **kwargs
-        )
+        return can.Bus(interface=self.can_interface, channel=self.device, **kwargs)
 
     @property
     def description(self) -> str:
@@ -385,9 +383,7 @@ class DobissController:
         async with self._refresh_lock:
             await self._refresh_and_settle_locked(idle, timeout)
 
-    async def _refresh_and_settle_locked(
-        self, idle: float, timeout: float
-    ) -> None:
+    async def _refresh_and_settle_locked(self, idle: float, timeout: float) -> None:
         """Body of async_refresh_and_settle, run while the refresh lock is held."""
         if self._bus is None:
             return
@@ -416,9 +412,7 @@ class DobissController:
                 if remaining <= 0:
                     return
                 try:
-                    await asyncio.wait_for(
-                        arrival.wait(), timeout=min(idle, remaining)
-                    )
+                    await asyncio.wait_for(arrival.wait(), timeout=min(idle, remaining))
                 except TimeoutError:
                     # Idle window elapsed without new frames -> burst is over.
                     return
@@ -478,9 +472,7 @@ class DobissController:
             if remaining <= 0:
                 break
             timeout = (
-                _DUMP_DRAIN_IDLE_S
-                if seen_modules >= configured_modules
-                else remaining
+                _DUMP_DRAIN_IDLE_S if seen_modules >= configured_modules else remaining
             )
             try:
                 msg = await asyncio.wait_for(
@@ -556,7 +548,8 @@ class DobissController:
                 raise
             except Exception:  # noqa: BLE001
                 _LOGGER.warning(
-                    "CAN read loop failed - reconnecting in %.1fs", backoff,
+                    "CAN read loop failed - reconnecting in %.1fs",
+                    backoff,
                     exc_info=True,
                 )
 

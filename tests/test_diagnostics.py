@@ -1,4 +1,5 @@
 """Tests for the dobiss_sx_evolution diagnostics module."""
+
 from __future__ import annotations
 
 from homeassistant.components.diagnostics import REDACTED

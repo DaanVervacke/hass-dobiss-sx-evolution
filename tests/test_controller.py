@@ -1,4 +1,5 @@
 """Tests for DobissController notifier lifecycle and _collect_initial_state drain."""
+
 from __future__ import annotations
 
 import asyncio
@@ -159,9 +160,7 @@ async def test_open_bus_tears_down_notifier_before_replacing_bus(
         call_order.append("teardown_notifier")
         await original_teardown()
 
-    old_bus.shutdown = MagicMock(
-        side_effect=lambda: call_order.append("bus.shutdown")
-    )
+    old_bus.shutdown = MagicMock(side_effect=lambda: call_order.append("bus.shutdown"))
 
     new_bus = MagicMock()
 
@@ -322,6 +321,7 @@ async def test_async_refresh_and_settle_sends_dump_and_returns_on_idle(
         await firing
 
     from custom_components.dobiss_sx_evolution.protocol import DUMP_REQUEST_FRAME
+
     send.assert_awaited_once_with(*DUMP_REQUEST_FRAME)
 
 
@@ -378,8 +378,7 @@ async def test_async_refresh_and_settle_waits_while_updates_arrive(
         await bumper
 
     assert elapsed >= 0.05, (
-        "Expected refresh to wait through the whole frame stream, "
-        f"got {elapsed:.3f}s"
+        f"Expected refresh to wait through the whole frame stream, got {elapsed:.3f}s"
     )
 
 
