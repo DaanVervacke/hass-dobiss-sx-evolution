@@ -12,5 +12,5 @@
   "loggers": ["dobiss_sx_evolution"],
   "quality_scale": "gold",
   "requirements": ["python-can==4.6.1", "pyserial==3.5"],
-  "version": "0.3.6"
+  "version": "0.4.0"
 }
