@@ -1,48 +1,97 @@
-# DOBISS SX Evolution Home Assistant integration
+<h1 align="center">DOBISS SX Evolution - Home Assistant integration</h1>
 
-[![HACS Custom][hacsbadge]][hacs]
-[![GitHub Release][releasebadge]][release]
-[![Quality Scale][qualitybadge]][quality]
-[![License][licensebadge]](LICENSE)
+<p align="center">
+  <a href="https://github.com/hacs/integration"><img src="https://img.shields.io/badge/HACS-Custom-41BDF5.svg?style=flat-square" alt="HACS Custom"></a>
+  <a href="https://github.com/DaanVervacke/hass-dobiss-sx-evolution/releases"><img src="https://img.shields.io/github/v/release/DaanVervacke/hass-dobiss-sx-evolution?style=flat-square&label=version&sort=semver" alt="Latest release"></a>
+  <a href="https://github.com/DaanVervacke/hass-dobiss-sx-evolution/actions/workflows/validate.yml"><img src="https://img.shields.io/github/actions/workflow/status/DaanVervacke/hass-dobiss-sx-evolution/validate.yml?style=flat-square&label=hacs%20%2F%20hassfest" alt="Validate"></a>
+  <a href="https://github.com/DaanVervacke/hass-dobiss-sx-evolution/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/DaanVervacke/hass-dobiss-sx-evolution/test.yml?style=flat-square&label=tests" alt="Tests"></a>
+  <a href="https://www.home-assistant.io/"><img src="https://img.shields.io/badge/dynamic/json?url=https://raw.githubusercontent.com/DaanVervacke/hass-dobiss-sx-evolution/main/hacs.json&query=$.homeassistant&label=Home%20Assistant&prefix=%3E%3D&color=41BDF5&logo=home-assistant&logoColor=white&style=flat-square" alt="Home Assistant"></a>
+  <a href="https://www.home-assistant.io/docs/quality_scale/"><img src="https://img.shields.io/badge/quality_scale-gold-gold.svg?style=flat-square" alt="Quality Scale"></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/github/license/DaanVervacke/hass-dobiss-sx-evolution?style=flat-square" alt="License"></a>
+</p>
+
+---
 
 Custom [Home Assistant](https://www.home-assistant.io/) integration for the
-[DOBISS SX Evolution](https://dobiss.com/). Connects to a DOBISS CAN bus either
-via a [`socketcand`](https://github.com/linux-can/socketcand) daemon over TCP
-or via a USB CAN adapter (slcan-compatible, e.g. CANable) plugged directly
-into your Home Assistant host, and exposes configured outputs as `light` and
-`cover` entities.
+[DOBISS SX Evolution](https://dobiss.com/). Connects to a DOBISS CAN bus
+(Max200 controller, 125 kbit/s) either via a
+[`socketcand`](https://github.com/linux-can/socketcand) daemon over TCP or
+via a USB CAN adapter (slcan-compatible, e.g. CANable) plugged directly into
+your Home Assistant host, and exposes configured outputs as light, cover,
+and switch entities.
 
-## Supported devices
+## Table of contents
 
-DOBISS SX Evolution installations driven by a Max200 controller, reachable
-via a `socketcand` bridge on the CAN bus.
+- [Features](#features)
+- [Entities](#entities)
+- [Prerequisites](#prerequisites)
+- [Socketcand setup guide](#socketcand-setup-guide)
+- [Installation](#installation)
+- [Configuration](#configuration)
+  - [Connection setup](#connection-setup)
+  - [Adding modules](#adding-modules)
+  - [Configuring outputs](#configuring-outputs)
+  - [Reconfiguring the connection](#reconfiguring-the-connection)
+- [Services](#services)
+- [Known limitations](#known-limitations)
+- [Removing the integration](#removing-the-integration)
+- [Troubleshooting](#troubleshooting)
+- [License](#license)
 
-## Supported functions
+## Features
 
-- `light` entities for on/off and dimmable outputs
-- `cover` entities for shutter outputs (open, close, stop)
-- `dobiss_sx_evolution.refresh` service to trigger a manual state dump
+- Purely local, push-based updates via the CAN bus with no cloud dependency and no polling
+- Light entities for on/off and dimmable outputs
+- Cover entities for shutter outputs (open, close, stop)
+- Switch entities for generic on/off relays (door buzzers, irrigation valves, ventilation fans)
+- Diagnostic sensors for CAN bus connection status and reconnect count
+- Automatic reconnection with exponential backoff and a Home Assistant repair issue when the bus stays down
+- State-dump request on startup and after every reconnect to bring entities up to date
+- Domain-wide `dobiss_sx_evolution.refresh` service for manual state resync
+- Supports both socketcand (TCP) and USB CAN adapters (slcan)
 
-## How state updates work
+## Entities
 
-Push-based via the CAN bus, no polling. The integration sends a state-dump
-request on startup and after every reconnect, then listens for incoming frames
-and pushes updates to entities in real time. Reconnection uses exponential
-backoff and a Home Assistant repair issue is raised when the connection is
-persistently unavailable.
+The integration creates the following entities for each configured output
+or for the hub device itself.
+
+### Lights
+
+One `light` entity per configured light output. Brightness control is
+available when the parent module is marked as a dimmer.
+
+### Covers
+
+One `cover` entity per configured shutter output. Each shutter uses two
+physical outputs (up and down). Position is not reported by the bus, so
+covers use `assumed_state` and `is_closed` is always unknown.
+
+### Switches
+
+One `switch` entity per configured switch output. Use this for generic
+on/off relays that are not lights or shutters.
+
+### Diagnostic sensors
+
+Created automatically on the hub device (Max200 controller):
+
+| Entity | Type | Description |
+|---|---|---|
+| CAN bus connected | Binary sensor | Whether the integration currently has an active CAN bus connection |
+| CAN bus reconnections | Sensor | Number of times the integration has reconnected since the last Home Assistant restart |
 
 ## Prerequisites
 
 - Home Assistant **2026.6.0** or newer
 - One of:
-  - A [`socketcand`](https://github.com/linux-can/socketcand) daemon reachable
-    over TCP from Home Assistant (default: `can0`, port `29536`), or
+  - A [`socketcand`](https://github.com/linux-can/socketcand) daemon
+    reachable over TCP from Home Assistant (default: `can0`, port `29536`), or
   - A USB CAN adapter (slcan-compatible, e.g. CANable) plugged into the Home
     Assistant host and appearing as `/dev/ttyACM*`, `/dev/ttyUSB*`, or the
-    Windows/macOS equivalent.
+    Windows/macOS equivalent
 
-See the [Socketcand setup guide](#socketcand-setup-guide) below if you're
-going the socketcand route and have not configured it yet.
+See the [Socketcand setup guide](#socketcand-setup-guide) below if you have
+not configured socketcand yet.
 
 ## Socketcand setup guide
 
@@ -73,15 +122,32 @@ You can make this persistent with systemd.
 
 ### HACS (recommended)
 
-This integration is not yet in the default HACS store. Add it as a custom
-repository first:
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=DaanVervacke&repository=hass-dobiss-sx-evolution&category=integration)
+
+Click the badge above to open this repository in HACS, then select
+**Download**. After HACS finishes, restart Home Assistant.
+
+[![Open your Home Assistant instance and start setting up a new integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=dobiss_sx_evolution)
+
+Click the badge above to open the **Add integration** dialog for DOBISS SX
+Evolution. The connection form opens directly. See
+[Configuration](#configuration) for what each field expects.
+
+#### Manual steps
+
+If the badges above do not work in your browser:
 
 1. Open HACS in your Home Assistant instance.
-2. Click the three dots in the top right corner and select **Custom repositories**.
-3. Add `https://github.com/DaanVervacke/hass-dobiss-sx-evolution` with category **Integration**.
-4. Search for **DOBISS SX Evolution** in HACS and click **Download**.
-5. Restart Home Assistant.
-6. Go to **Settings** > **Devices & Services** > **Add Integration** and search for **DOBISS SX Evolution**.
+2. Search for **DOBISS SX Evolution** in the HACS search bar and install it.
+3. Restart Home Assistant.
+4. Go to **Settings** > **Devices & services** > **Add integration** and search for **DOBISS SX Evolution**.
+
+If the search returns no results, add this repository as a custom repository
+first:
+
+1. Open HACS, click the three dots in the top right corner, and select **Custom repositories**.
+2. Add `https://github.com/DaanVervacke/hass-dobiss-sx-evolution` with category **Integration**.
+3. Search for **DOBISS SX Evolution** in HACS and install it.
 
 ### Manual
 
@@ -94,7 +160,7 @@ Configuration is done entirely through the Home Assistant UI.
 
 ### Connection setup
 
-Go to **Settings** > **Devices & Services** > **Add Integration** and search
+Go to **Settings** > **Devices & services** > **Add integration** and search
 for **DOBISS SX Evolution**. Pick either **socketcand** or **USB CAN adapter**
 on the first step.
 
@@ -122,7 +188,7 @@ The integration probes the connection before saving. If the probe fails, a
 
 After the connection entry is saved, add one **Module** subentry per physical
 DOBISS module in your installation. Open the DOBISS SX Evolution card in
-**Settings** > **Devices & Services** and click **Add module**.
+**Settings** > **Devices & services** and click **Add module**.
 
 | Field | Required | Description |
 |---|---|---|
@@ -137,6 +203,7 @@ to that module:
 
 - **Add light**: output number and an optional friendly name
 - **Add shutter**: up-output number, down-output number and an optional friendly name
+- **Add switch**: output number and an optional friendly name
 - **Remove output**: select an existing output to remove
 - **Edit module**: change the module letter, friendly name, or dimmable flag
 
@@ -146,7 +213,7 @@ up and down output numbers must be distinct and unclaimed.
 ### Reconfiguring the connection
 
 If the `socketcand` host/port/interface or the USB device path changes, open
-the DOBISS SX Evolution card in **Settings** > **Devices & Services** and use
+the DOBISS SX Evolution card in **Settings** > **Devices & services** and use
 the **Reconfigure** option. The form pre-fills the current values. The entry
 is reloaded automatically on success.
 
@@ -155,7 +222,7 @@ is reloaded automatically on success.
 ### `dobiss_sx_evolution.refresh`
 
 Sends a state-dump request to every active DOBISS entry. Use this to
-resynchronise entity states without restarting Home Assistant.
+resynchronize entity states without restarting Home Assistant.
 
 This service takes no parameters.
 
@@ -165,9 +232,20 @@ This service takes no parameters.
   unknown and `assumed_state` is `True`, so open/close/stop buttons remain
   available regardless of the last known state.
 
+## Removing the integration
+
+1. Go to **Settings** > **Devices & services**.
+2. Find the **DOBISS SX Evolution** card and click the three-dot menu.
+3. Select **Delete**.
+
+No changes are made to your DOBISS hardware or `socketcand` daemon.
+
 ## Troubleshooting
 
-1. **Enable debug logging.** Open **Settings** > **Devices & Services**, click
+If the integration is misbehaving, work through these steps before filing an
+issue:
+
+1. **Enable debug logging.** Open **Settings** > **Devices & services**, click
    the three-dot menu on the DOBISS SX Evolution entry, and select **Enable
    debug logging**. Reproduce the issue, then choose **Disable debug logging**
    from the same menu. Home Assistant will offer to download the captured log.
@@ -191,29 +269,6 @@ This service takes no parameters.
    [github.com/DaanVervacke/hass-dobiss-sx-evolution/issues](https://github.com/DaanVervacke/hass-dobiss-sx-evolution/issues)
    and include the diagnostics JSON and the relevant log lines.
 
-## Removing the integration
-
-1. Go to **Settings** > **Devices & Services**.
-2. Find the **DOBISS SX Evolution** card and click the three-dot menu.
-3. Select **Delete**.
-
-No changes are made to your DOBISS hardware or `socketcand` daemon.
-
-## Use cases
-
-- Control your lights and dimmers from Home Assistant automations and
-  dashboards.
-- Integrate your shutters into scenes and time-based automations.
-- Use the refresh service to resync state after a `socketcand` daemon restart.
-
 ## License
 
 [MIT](LICENSE) - Daan Vervacke ([@DaanVervacke](https://github.com/DaanVervacke))
-
-[hacs]: https://github.com/hacs/integration
-[hacsbadge]: https://img.shields.io/badge/HACS-Custom-orange.svg
-[release]: https://github.com/DaanVervacke/hass-dobiss-sx-evolution/releases
-[releasebadge]: https://img.shields.io/github/v/release/DaanVervacke/hass-dobiss-sx-evolution
-[quality]: https://www.home-assistant.io/docs/quality_scale/
-[qualitybadge]: https://img.shields.io/badge/quality_scale-gold-gold.svg
-[licensebadge]: https://img.shields.io/github/license/DaanVervacke/hass-dobiss-sx-evolution
