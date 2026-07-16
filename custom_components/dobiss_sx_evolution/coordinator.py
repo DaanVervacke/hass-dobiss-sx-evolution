@@ -8,10 +8,13 @@ via async_set_updated_data.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
+from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
@@ -107,6 +110,8 @@ class DobissCoordinator(DataUpdateCoordinator[dict[OutputKey, int]]):
             entry_id=entry.entry_id,
         )
 
+        self._debounce_unsub: Callable[[], None] | None = None
+
     async def _async_setup(self) -> None:
         """Open the CAN bus and run initial discovery."""
         try:
@@ -135,10 +140,21 @@ class DobissCoordinator(DataUpdateCoordinator[dict[OutputKey, int]]):
 
     @callback
     def _on_controller_update(self, key: OutputKey, value: int) -> None:
-        """Receive a push from the controller and notify listeners."""
+        """Receive a push from the controller and schedule a coalesced notify."""
+        if self._debounce_unsub is not None:
+            self._debounce_unsub()
+        self._debounce_unsub = async_call_later(self.hass, 0.05, self._flush_state)
+
+    @callback
+    def _flush_state(self, _now: Any = None) -> None:
+        """Push the current state snapshot to all entity listeners."""
+        self._debounce_unsub = None
         self.async_set_updated_data(dict(self.controller.states))
 
     async def async_shutdown(self) -> None:
         """Tear down the controller, then the coordinator."""
+        if self._debounce_unsub is not None:
+            self._debounce_unsub()
+            self._debounce_unsub = None
         await self.controller.async_shutdown()
         await super().async_shutdown()

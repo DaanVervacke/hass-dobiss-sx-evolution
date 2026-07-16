@@ -1,11 +1,17 @@
 """Tests for DobissCoordinator."""
 from __future__ import annotations
 
+from datetime import timedelta
+
 import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.update_coordinator import UpdateFailed
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from homeassistant.util.dt import utcnow
+from pytest_homeassistant_custom_component.common import (
+    MockConfigEntry,
+    async_fire_time_changed,
+)
 
 from custom_components.dobiss_sx_evolution.const import (
     CONF_CONNECTION_TYPE,
@@ -21,6 +27,7 @@ from custom_components.dobiss_sx_evolution.coordinator import (
 )
 
 from .conftest import MOCK_CONFIG
+from .test_init import _make_entry_data
 
 
 def _make_entry(hass: HomeAssistant) -> MockConfigEntry:
@@ -108,6 +115,7 @@ async def test_coordinator_listener_invokes_update(
     mock_controller.states = {("01", 1): 1}
 
     coordinator._on_controller_update(("01", 1), 1)
+    async_fire_time_changed(hass, utcnow() + timedelta(milliseconds=100))
     await hass.async_block_till_done()
 
     assert coordinator.data == {("01", 1): 1}
@@ -136,6 +144,41 @@ async def test_coordinator_usb_connection(
     connection = call_kwargs["connection"]
     assert isinstance(connection, UsbConnection)
     assert connection.device == "/dev/ttyUSB0"
+
+
+async def test_coordinator_coalesces_burst_notifications(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """Multiple rapid state changes should result in one coordinator update."""
+    entry = MockConfigEntry(
+        domain=DOMAIN, data=_make_entry_data(), title="DOBISS", version=1,
+    )
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    coordinator = entry.runtime_data
+    update_count = 0
+    original = coordinator.async_set_updated_data
+
+    def counting_update(data):
+        nonlocal update_count
+        update_count += 1
+        original(data)
+
+    coordinator.async_set_updated_data = counting_update
+
+    # Simulate a burst of 5 rapid state changes
+    listener = mock_controller.async_add_listener.call_args[0][0]
+    for i in range(5):
+        listener(("A", i + 1), 1)
+
+    # Let the debounce timer fire
+    async_fire_time_changed(hass, utcnow() + timedelta(milliseconds=100))
+    await hass.async_block_till_done()
+
+    # Should have coalesced into 1 update, not 5
+    assert update_count == 1
 
 
 # ---------------------------------------------------------------------------
