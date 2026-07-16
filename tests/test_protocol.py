@@ -139,12 +139,22 @@ def test_build_state_frame_bcd_output_encoding():
         )
 
 
-def test_build_state_frame_state_masked_to_byte():
-    """State values wider than 8 bits are masked with & 0xFF."""
-    result = build_state_frame("A", 1, 0x144)
-    assert result is not None
-    _, payload = result
-    assert payload[3] == 0x44
+def test_build_state_frame_rejects_state_wider_than_byte():
+    """State values outside 0-255 must return None."""
+    assert build_state_frame("A", 1, 256) is None
+    assert build_state_frame("A", 1, 0x144) is None
+    assert build_state_frame("A", 1, -1) is None
+
+
+def test_build_state_frame_accepts_boundary_state_values():
+    """State values 0 and 255 are valid and must not be rejected."""
+    result_0 = build_state_frame("A", 1, 0)
+    assert result_0 is not None
+    assert result_0[1][3] == 0
+
+    result_255 = build_state_frame("A", 1, 255)
+    assert result_255 is not None
+    assert result_255[1][3] == 255
 
 
 def test_build_state_frame_payload_structure():

@@ -58,7 +58,9 @@ def build_state_frame(module: str, output: int, state: int) -> tuple[int, bytes]
         return None
     zero = output - 1
     output_byte = (zero // 10) * 16 + (zero % 10)
-    return CAN_ID_TX_STATE, bytes([0x00, module_byte, output_byte, state & 0xFF])
+    if not 0 <= state <= 255:
+        return None
+    return CAN_ID_TX_STATE, bytes([0x00, module_byte, output_byte, state])
 
 
 DUMP_REQUEST_FRAME: tuple[int, bytes] = (CAN_ID_STATE_DUMP, b"")
