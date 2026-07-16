@@ -82,7 +82,7 @@ Created automatically on the hub device (Max200 controller):
 
 ## Prerequisites
 
-- Home Assistant **2026.6.0** or newer
+- Home Assistant **2026.7.0** or newer
 - One of:
   - A [`socketcand`](https://github.com/linux-can/socketcand) daemon
     reachable over TCP from Home Assistant (default: `can0`, port `29536`), or
