@@ -218,14 +218,15 @@ def _make_reload_listener(
         await hass.config_entries.async_unload_platforms(updated_entry, PLATFORMS)
         await hass.config_entries.async_forward_entry_setups(updated_entry, PLATFORMS)
 
-        coordinator.async_set_updated_data(dict(ctrl.states))
-
-        # Request a fresh dump so new entities pick up the real hardware
-        # state instead of the (possibly stale) cache.
+        # Refresh the state cache from the bus and wait for the response
+        # burst to settle so newly added entities see the real hardware
+        # state on their first render instead of defaulting to off.
         try:
-            await ctrl.async_request_dump()
+            await ctrl.async_refresh_and_settle()
         except Exception:  # noqa: BLE001
-            _LOGGER.debug("Post-reload dump request failed", exc_info=True)
+            _LOGGER.debug("Post-reload state refresh failed", exc_info=True)
+
+        coordinator.async_set_updated_data(dict(ctrl.states))
 
     return _listener
 

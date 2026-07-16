@@ -204,19 +204,15 @@ async def test_reload_listener_output_only_change_skips_full_reload(
     # Platform unload and re-forward must have been called.
     assert unload_calls, "Expected async_unload_platforms to be called"
     assert forward_calls, "Expected async_forward_entry_setups to be called"
-    # The fast path must NOT call the full refresh-and-settle flow.
-    assert mock_controller.async_refresh_and_settle.await_count == 0, (
-        "Output-only reload must not trigger a full refresh; the cached state is "
-        "pushed via async_set_updated_data instead"
-    )
-    # A lightweight dump IS requested so new entities pick up real hardware state.
-    mock_controller.async_request_dump.assert_awaited_once()
+    # The fast path refreshes from the bus and waits for the response burst
+    # to settle so newly added entities see real hardware state.
+    assert mock_controller.async_refresh_and_settle.await_count == 1
 
 
 async def test_reload_listener_output_only_suppresses_dump_failure(
     hass: HomeAssistant, mock_controller
 ) -> None:
-    """A failing post-reload dump request must not propagate from the listener."""
+    """A failing post-reload refresh must not propagate from the listener."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         data=_make_entry_data(),
@@ -231,7 +227,7 @@ async def test_reload_listener_output_only_suppresses_dump_failure(
     await hass.async_block_till_done()
     assert entry.state is ConfigEntryState.LOADED
 
-    mock_controller.async_request_dump = AsyncMock(side_effect=Exception("boom"))
+    mock_controller.async_refresh_and_settle = AsyncMock(side_effect=Exception("boom"))
 
     updated_entry = MockConfigEntry(
         domain=DOMAIN,
@@ -269,7 +265,7 @@ async def test_reload_listener_output_only_suppresses_dump_failure(
         await listener(hass, updated_entry)
 
     assert not full_reload.called
-    mock_controller.async_request_dump.assert_awaited_once()
+    mock_controller.async_refresh_and_settle.assert_awaited_once()
 
 
 async def test_reload_listener_new_module_triggers_full_reload(
