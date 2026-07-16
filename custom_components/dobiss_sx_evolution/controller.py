@@ -15,6 +15,7 @@ from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.issue_registry import IssueSeverity
 
 from .const import (
+    CAN_ID_RX_STATE,
     CAN_ID_TX_STATE,
     DISCOVERY_TIMEOUT_S,
     DOMAIN,
@@ -614,6 +615,8 @@ class DobissController:
         instead of re-parsing the same frame.
         """
         if msg.arbitration_id == CAN_ID_TX_STATE:
+            return None
+        if msg.arbitration_id != CAN_ID_RX_STATE:
             return None
         update = parse_state_frame(bytes(msg.data))
         if update is None or update.module not in self.modules:

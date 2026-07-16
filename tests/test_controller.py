@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from homeassistant.core import HomeAssistant
 
+from custom_components.dobiss_sx_evolution.const import CAN_ID_RX_STATE
 from custom_components.dobiss_sx_evolution.controller import (
     DobissController,
     SocketcandConnection,
@@ -37,7 +38,7 @@ def _make_fake_message(module: str = "A", output: int = 1, state: int = 1) -> Ma
 
     frame = build_state_frame(module, output, state)
     msg = MagicMock()
-    msg.arbitration_id = 0x1010000  # CAN_ID_STATE_DUMP echo
+    msg.arbitration_id = CAN_ID_RX_STATE
     msg.data = frame[1] if frame else b"\x00" * 8
     return msg
 
@@ -419,6 +420,19 @@ async def test_async_shutdown_closes_bus_even_when_notifier_raises(
     assert ctrl._notifier is None
     assert ctrl._reader is None
     assert ctrl._bus is None
+
+
+async def test_ingest_rejects_unknown_arbitration_id(hass: HomeAssistant) -> None:
+    """Frames on unknown CAN IDs must be silently dropped."""
+    ctrl = _make_controller(hass)
+    ctrl.states[("A", 1)] = 0
+
+    msg = _make_fake_message(module="A", output=1, state=1)
+    msg.arbitration_id = 0xDEAD  # not CAN_ID_RX_STATE
+
+    result = ctrl._ingest_message(msg)
+    assert result is None
+    assert ctrl.states[("A", 1)] == 0  # unchanged
 
 
 async def test_read_frames_raises_on_liveness_timeout(hass: HomeAssistant) -> None:
