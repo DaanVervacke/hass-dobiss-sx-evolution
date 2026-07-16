@@ -40,11 +40,12 @@ type DobissConfigEntry = ConfigEntry[DobissCoordinator]
 
 def parse_output_lists(
     entry: DobissConfigEntry,
-) -> tuple[list[OutputKey], set[OutputKey], list[ShutterConfig]]:
-    """Build lights, dimmers, and shutters lists from module subentries."""
+) -> tuple[list[OutputKey], set[OutputKey], list[ShutterConfig], list[OutputKey]]:
+    """Build lights, dimmers, shutters, and switches lists from module subentries."""
     lights: list[OutputKey] = []
     dimmers: set[OutputKey] = set()
     shutters: list[ShutterConfig] = []
+    switches: list[OutputKey] = []
 
     for sub in entry.subentries.values():
         if sub.subentry_type != SUBENTRY_TYPE_MODULE:
@@ -66,8 +67,10 @@ def parse_output_lists(
                         down_output=int(cfg["down_output"]),
                     )
                 )
+            elif cfg["type"] == "switch":
+                switches.append((module, output))
 
-    return lights, dimmers, shutters
+    return lights, dimmers, shutters, switches
 
 
 class DobissCoordinator(DataUpdateCoordinator[dict[OutputKey, int]]):
@@ -92,7 +95,7 @@ class DobissCoordinator(DataUpdateCoordinator[dict[OutputKey, int]]):
             always_update=False,
         )
 
-        lights, dimmers, shutters = parse_output_lists(entry)
+        lights, dimmers, shutters, switches = parse_output_lists(entry)
 
         connection_type = entry.data.get(CONF_CONNECTION_TYPE, CONNECTION_TYPE_SOCKETCAND)
         connection: ConnectionConfig
@@ -107,6 +110,7 @@ class DobissCoordinator(DataUpdateCoordinator[dict[OutputKey, int]]):
             lights=lights,
             dimmers=dimmers,
             shutters=shutters,
+            switches=switches,
             entry_id=entry.entry_id,
         )
 

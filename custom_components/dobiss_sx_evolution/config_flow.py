@@ -542,7 +542,7 @@ class ModuleSubentryFlowHandler(ConfigSubentryFlow):
         subentry = self._get_reconfigure_subentry()
         outputs: dict[str, Any] = subentry.data.get("outputs", {})
 
-        menu_options = ["add_light", "add_shutter", "edit_module"]
+        menu_options = ["add_light", "add_shutter", "add_switch", "edit_module"]
         if outputs:
             menu_options.insert(2, "remove_output")
 
@@ -656,6 +656,52 @@ class ModuleSubentryFlowHandler(ConfigSubentryFlow):
         )
         return self.async_show_form(
             step_id="add_shutter", data_schema=schema, errors=errors
+        )
+
+    # ------------------------------------------------------------------ #
+    # add_switch                                                           #
+    # ------------------------------------------------------------------ #
+
+    async def async_step_add_switch(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Add a switch output to this module."""
+        errors: dict[str, str] = {}
+        subentry = self._get_reconfigure_subentry()
+
+        if user_input is not None:
+            output: int = user_input["output"]
+            name: str = user_input.get(CONF_NAME, "").strip()
+
+            if output < 1 or output > 12:
+                errors["output"] = "invalid_output"
+            else:
+                outputs: dict[str, Any] = dict(subentry.data.get("outputs", {}))
+                occupied = _occupied_outputs_in_module(outputs)
+                if output in occupied:
+                    errors["output"] = "duplicate_output"
+                else:
+                    outputs[str(output)] = {
+                        "type": "switch",
+                        "name": name,
+                    }
+                    new_data = dict(subentry.data) | {"outputs": outputs}
+                    return self.async_update_and_abort(
+                        self._get_entry(),
+                        subentry,
+                        data=new_data,
+                        title=subentry.title,
+                    )
+
+        defaults = user_input or {}
+        schema = vol.Schema(
+            {
+                vol.Required("output", default=defaults.get("output", 1)): int,
+                vol.Optional(CONF_NAME, default=defaults.get(CONF_NAME, "")): str,
+            }
+        )
+        return self.async_show_form(
+            step_id="add_switch", data_schema=schema, errors=errors
         )
 
     # ------------------------------------------------------------------ #

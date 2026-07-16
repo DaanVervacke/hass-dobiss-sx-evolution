@@ -31,6 +31,7 @@ PLATFORMS: list[Platform] = [
     Platform.COVER,
     Platform.LIGHT,
     Platform.SENSOR,
+    Platform.SWITCH,
 ]
 
 _SERVICE_REFRESH = "refresh"
@@ -191,14 +192,16 @@ def _make_reload_listener(
         )
         prev_modules = new_modules  # unchanged, but keep in sync
 
-        lights, dimmers, shutters = parse_output_lists(updated_entry)
+        lights, dimmers, shutters, switches = parse_output_lists(updated_entry)
 
         ctrl = coordinator.controller
         ctrl.lights = lights
         ctrl.dimmers = dimmers
         ctrl.shutters = shutters
+        ctrl.switches = switches
         ctrl.modules = sorted(
-            {m for m, _ in (*lights, *dimmers)} | {s.module for s in shutters}
+            {m for m, _ in (*lights, *dimmers, *switches)}
+            | {s.module for s in shutters}
         )
 
         # Push any subentry title change to the corresponding module device

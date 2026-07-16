@@ -128,6 +128,7 @@
           "menu_options": {
             "add_light": "Add a light",
             "add_shutter": "Add a shutter",
+            "add_switch": "Add a switch",
             "remove_output": "Remove an output",
             "edit_module": "Edit module settings"
           }
@@ -156,6 +157,18 @@
             "up_output": "The output number wired to the motor's UP direction.",
             "down_output": "The output number wired to the motor's DOWN direction. Must differ from the up output.",
             "name": "Optional. The name Home Assistant will show, for example \"Living room blind\" or \"Bedroom screen\"."
+          }
+        },
+        "add_switch": {
+          "title": "Add a switch",
+          "description": "Pick the output this switch is wired to. Use this for generic on/off relays like door buzzers, irrigation valves, or ventilation fans.",
+          "data": {
+            "output": "Output number",
+            "name": "Friendly name"
+          },
+          "data_description": {
+            "output": "The output number on the module this switch is wired to (1, 2, 3, ...). Each output can only be used by one light, shutter, or switch.",
+            "name": "Optional. The name Home Assistant will show, for example \"Door buzzer\" or \"Garden irrigation\"."
           }
         },
         "remove_output": {

@@ -176,6 +176,7 @@ class DobissController:
         lights: list[OutputKey],
         dimmers: set[OutputKey],
         shutters: list[ShutterConfig],
+        switches: list[OutputKey] | None = None,
         entry_id: str = "",
     ) -> None:
         """Initialize the controller."""
@@ -184,8 +185,10 @@ class DobissController:
         self.lights = lights
         self.dimmers = dimmers
         self.shutters = shutters
+        self.switches = switches or []
         self.modules: list[str] = sorted(
-            {m for m, _ in (*lights, *dimmers)} | {s.module for s in shutters}
+            {m for m, _ in (*lights, *dimmers, *self.switches)}
+            | {s.module for s in shutters}
         )
         self.states: dict[OutputKey, int] = {}
         self.reconnect_count: int = 0

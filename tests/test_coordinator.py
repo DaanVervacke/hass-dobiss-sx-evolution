@@ -201,10 +201,11 @@ def test_parse_output_lists_light_on_non_dimmable_module():
             },
         }],
     )
-    lights, dimmers, shutters = parse_output_lists(entry)
+    lights, dimmers, shutters, switches = parse_output_lists(entry)
     assert ("A", 1) in lights
     assert len(dimmers) == 0
     assert shutters == []
+    assert switches == []
 
 
 def test_parse_output_lists_dimmable_module():
@@ -222,10 +223,11 @@ def test_parse_output_lists_dimmable_module():
             },
         }],
     )
-    lights, dimmers, shutters = parse_output_lists(entry)
+    lights, dimmers, shutters, switches = parse_output_lists(entry)
     assert lights == []
     assert ("B", 2) in dimmers
     assert shutters == []
+    assert switches == []
 
 
 def test_parse_output_lists_shutter():
@@ -245,8 +247,31 @@ def test_parse_output_lists_shutter():
             },
         }],
     )
-    lights, dimmers, shutters = parse_output_lists(entry)
+    lights, dimmers, shutters, switches = parse_output_lists(entry)
     assert lights == []
     assert len(dimmers) == 0
     assert len(shutters) == 1
     assert shutters[0] == ShutterConfig(module="A", up_output=9, down_output=10)
+    assert switches == []
+
+
+def test_parse_output_lists_switch():
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=MOCK_CONFIG,
+        subentries_data=[{
+            "subentry_type": SUBENTRY_TYPE_MODULE,
+            "title": "Module A",
+            "unique_id": "module:A",
+            "data": {
+                "module": "A",
+                "dimmable": False,
+                "outputs": {"3": {"type": "switch", "name": "Buzzer"}},
+            },
+        }],
+    )
+    lights, dimmers, shutters, switches = parse_output_lists(entry)
+    assert lights == []
+    assert len(dimmers) == 0
+    assert shutters == []
+    assert switches == [("A", 3)]
