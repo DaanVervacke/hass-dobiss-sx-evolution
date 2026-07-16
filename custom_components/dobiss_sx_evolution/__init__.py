@@ -6,6 +6,7 @@ import logging
 from collections.abc import Callable, Coroutine
 from typing import Any
 
+import voluptuous as vol
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall
@@ -92,7 +93,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: DobissConfigEntry) -> bo
     )
 
     if not hass.services.has_service(DOMAIN, _SERVICE_REFRESH):
-        hass.services.async_register(DOMAIN, _SERVICE_REFRESH, _async_handle_refresh)
+        hass.services.async_register(
+            DOMAIN, _SERVICE_REFRESH, _async_handle_refresh, schema=vol.Schema({})
+        )
 
     return True
 
