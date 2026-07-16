@@ -7,7 +7,7 @@
       },
       "socketcand": {
         "title": "Connect via socketcand",
-        "description": "Home Assistant talks to the DOBISS SX Evolution through a socketcand daemon running near the bus. Tell me where to find it.",
+        "description": "Home Assistant connects to the DOBISS SX Evolution through a socketcand daemon running near the bus.",
         "data": {
           "host": "socketcand host",
           "port": "socketcand port",
@@ -21,7 +21,7 @@
       },
       "reauth_socketcand": {
         "title": "Reconnect to socketcand",
-        "description": "Home Assistant lost the connection. Confirm or update the socketcand details below and we'll try again.",
+        "description": "Home Assistant lost the connection. Confirm or update the socketcand details below.",
         "data": {
           "host": "socketcand host",
           "port": "socketcand port",
@@ -35,7 +35,7 @@
       },
       "reauth_usb": {
         "title": "Reconnect USB CAN adapter",
-        "description": "Home Assistant lost the connection. Confirm or update the USB CAN adapter details below and we'll try again.",
+        "description": "Home Assistant lost the connection. Confirm or update the USB CAN adapter details below.",
         "data": {
           "device": "Device path"
         },
@@ -87,9 +87,9 @@
     },
     "error": {
       "cannot_connect": "Couldn't connect to the CAN bus. Check your connection settings and that the device/daemon is available.",
-      "unknown": "Something went wrong. Check the Home Assistant logs for details.",
-      "invalid_connection_type": "Please select a valid connection type.",
-      "invalid_output": "Please provide valid output settings.",
+      "unknown": "Unexpected error. Check the Home Assistant logs for details.",
+      "invalid_connection_type": "Select a valid connection type.",
+      "invalid_output": "Provide valid output settings.",
       "same_output": "Up and down outputs must be different.",
       "duplicate_output": "That output is already in use by another light or shutter on this module."
     },
@@ -140,7 +140,7 @@
             "name": "Friendly name"
           },
           "data_description": {
-            "output": "The output number on the module this light is wired to (1, 2, 3, …). Each output can only be used by one light or shutter.",
+            "output": "The output number on the module this light is wired to (1, 2, 3, ...). Each output can only be used by one light or shutter.",
             "name": "Optional. The name Home Assistant will show, for example \"Kitchen ceiling\" or \"Reading lamp\"."
           }
         },
@@ -212,7 +212,7 @@
   "services": {
     "refresh": {
       "name": "Refresh state",
-      "description": "Asks DOBISS to broadcast the current state of every output. Useful if Home Assistant's cached state has drifted from reality."
+      "description": "Asks DOBISS to broadcast the current state of every output. Useful when Home Assistant's cached state is out of sync."
     }
   },
   "exceptions": {

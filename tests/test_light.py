@@ -211,22 +211,20 @@ async def test_turn_on_without_brightness_does_not_overflow(
     assert 0 <= brightness <= 255, f"Brightness overflowed 0-255: {brightness!r}"
 
 
-async def test_light_friendly_name_is_output_name_only(
+async def test_light_friendly_name_includes_device_and_output(
     hass: HomeAssistant,
 ) -> None:
-    """The entity friendly name must be exactly the output name from setup.
+    """The entity friendly name is the device name plus the output name.
 
-    The subentry title (module rename) is used for the device name but does
-    NOT get concatenated into the entity friendly name.
+    HA core computes friendly_name as "<device name> <entity name>" for all
+    entities associated with a device.  The subentry title becomes the device
+    name; the output name from setup is the entity name.
     """
     await _setup(hass, dimmable=False, title="Living Room Panel")
 
     state = hass.states.get("light.sx_evo_module_a_output_1_living_room")
     assert state is not None
-    assert state.attributes.get("friendly_name") == "Living Room", (
-        f"Expected friendly name to be the output name only, got: "
-        f"{state.attributes.get('friendly_name')!r}"
-    )
+    assert state.attributes.get("friendly_name") == "Living Room Panel Living Room"
 
 
 async def test_turn_on_can_error_raises_ha_error(hass: HomeAssistant) -> None:
