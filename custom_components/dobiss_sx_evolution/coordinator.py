@@ -16,13 +16,8 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .const import (
     CONF_CONNECTION_TYPE,
-    CONF_DEVICE,
-    CONF_HOST,
-    CONF_INTERFACE,
     CONF_MODULE,
-    CONF_PORT,
     CONNECTION_TYPE_SOCKETCAND,
-    DEFAULT_BAUDRATE,
     DOMAIN,
     SUBENTRY_TYPE_MODULE,
 )
@@ -99,17 +94,9 @@ class DobissCoordinator(DataUpdateCoordinator[dict[OutputKey, int]]):
         connection_type = entry.data.get(CONF_CONNECTION_TYPE, CONNECTION_TYPE_SOCKETCAND)
         connection: ConnectionConfig
         if connection_type == CONNECTION_TYPE_SOCKETCAND:
-            connection = SocketcandConnection(
-                host=entry.data.get(CONF_HOST, ""),
-                port=entry.data.get(CONF_PORT, 0),
-                interface=entry.data.get(CONF_INTERFACE, ""),
-            )
+            connection = SocketcandConnection.from_config(entry.data)
         else:
-            connection = UsbConnection(
-                device=entry.data.get(CONF_DEVICE, ""),
-                baudrate=DEFAULT_BAUDRATE,
-                can_interface="slcan",
-            )
+            connection = UsbConnection.from_config(entry.data)
 
         self.controller = DobissController(
             hass,

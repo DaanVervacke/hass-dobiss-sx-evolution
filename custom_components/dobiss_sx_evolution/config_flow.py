@@ -33,7 +33,6 @@ from .const import (
     CONF_PORT,
     CONNECTION_TYPE_SOCKETCAND,
     CONNECTION_TYPE_USB,
-    DEFAULT_BAUDRATE,
     DEFAULT_INTERFACE,
     DEFAULT_PORT,
     DOMAIN,
@@ -175,11 +174,7 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
                 f"{CONNECTION_TYPE_SOCKETCAND}:{user_input[CONF_HOST]}:{user_input[CONF_PORT]}/{user_input[CONF_INTERFACE]}"
             )
             self._abort_if_unique_id_configured()
-            conn = SocketcandConnection(
-                host=user_input[CONF_HOST],
-                port=user_input[CONF_PORT],
-                interface=user_input[CONF_INTERFACE],
-            )
+            conn = SocketcandConnection.from_config(user_input)
             error = await self._async_probe(conn)
             if error:
                 errors["base"] = error
@@ -218,11 +213,7 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
                 f"{CONNECTION_TYPE_USB}:{user_input[CONF_DEVICE]}"
             )
             self._abort_if_unique_id_configured()
-            conn = UsbConnection(
-                device=user_input[CONF_DEVICE],
-                baudrate=DEFAULT_BAUDRATE,
-                can_interface="slcan",
-            )
+            conn = UsbConnection.from_config(user_input)
             error = await self._async_probe(conn)
             if error:
                 errors["base"] = error
@@ -285,11 +276,7 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
         entry = self._get_reauth_entry()
 
         if user_input is not None:
-            conn = SocketcandConnection(
-                host=user_input[CONF_HOST],
-                port=user_input[CONF_PORT],
-                interface=user_input[CONF_INTERFACE],
-            )
+            conn = SocketcandConnection.from_config(user_input)
             error = await self._async_probe(conn)
             if error:
                 errors["base"] = error
@@ -336,11 +323,7 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
         device_options = await self._build_usb_device_options()
 
         if user_input is not None:
-            conn = UsbConnection(
-                device=user_input[CONF_DEVICE],
-                baudrate=DEFAULT_BAUDRATE,
-                can_interface="slcan",
-            )
+            conn = UsbConnection.from_config(user_input)
             error = await self._async_probe(conn)
             if error:
                 errors["base"] = error
@@ -405,11 +388,7 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
         entry = self._get_reconfigure_entry()
 
         if user_input is not None:
-            conn = SocketcandConnection(
-                host=user_input[CONF_HOST],
-                port=user_input[CONF_PORT],
-                interface=user_input[CONF_INTERFACE],
-            )
+            conn = SocketcandConnection.from_config(user_input)
             error = await self._async_probe(conn)
             if error:
                 errors["base"] = error
@@ -455,11 +434,7 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
         device_options = await self._build_usb_device_options()
 
         if user_input is not None:
-            conn = UsbConnection(
-                device=user_input[CONF_DEVICE],
-                baudrate=DEFAULT_BAUDRATE,
-                can_interface="slcan",
-            )
+            conn = UsbConnection.from_config(user_input)
             error = await self._async_probe(conn)
             if error:
                 errors["base"] = error

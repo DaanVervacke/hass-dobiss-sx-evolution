@@ -6,7 +6,7 @@ import asyncio
 import contextlib
 import logging
 import socket
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -17,6 +17,11 @@ from homeassistant.helpers.issue_registry import IssueSeverity
 from .const import (
     CAN_ID_RX_STATE,
     CAN_ID_TX_STATE,
+    CONF_DEVICE,
+    CONF_HOST,
+    CONF_INTERFACE,
+    CONF_PORT,
+    DEFAULT_BAUDRATE,
     DISCOVERY_TIMEOUT_S,
     DOMAIN,
     LIVENESS_TIMEOUT_S,
@@ -68,6 +73,15 @@ class SocketcandConnection:
     port: int
     interface: str
 
+    @classmethod
+    def from_config(cls, data: Mapping[str, Any]) -> SocketcandConnection:
+        """Build from config entry data or user_input dict."""
+        return cls(
+            host=data.get(CONF_HOST, ""),
+            port=data.get(CONF_PORT, 0),
+            interface=data.get(CONF_INTERFACE, ""),
+        )
+
     def make_bus(self) -> can.BusABC:
         """Open and return a python-can socketcand Bus.
 
@@ -109,6 +123,15 @@ class UsbConnection:
     device: str
     baudrate: int
     can_interface: str
+
+    @classmethod
+    def from_config(cls, data: Mapping[str, Any]) -> UsbConnection:
+        """Build from config entry data or user_input dict."""
+        return cls(
+            device=data.get(CONF_DEVICE, ""),
+            baudrate=DEFAULT_BAUDRATE,
+            can_interface="slcan",
+        )
 
     def make_bus(self) -> can.BusABC:
         """Open and return a python-can USB Bus.
