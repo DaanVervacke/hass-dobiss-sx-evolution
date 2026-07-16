@@ -31,3 +31,5 @@ dist/
 # Project-local scratch
 exelixis-main.zip
 exelixis-unpack/
+plans/
+CLAUDE.md
