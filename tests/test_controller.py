@@ -437,6 +437,59 @@ async def test_async_shutdown_closes_bus_even_when_notifier_raises(
     assert ctrl._bus is None
 
 
+async def test_open_bus_closes_orphaned_bus_when_cancelled_mid_connect(
+    hass: HomeAssistant,
+) -> None:
+    """If _open_bus's await of the executor job is cancelled after make_bus()
+    already returned a bus handle (the CancelledError races the executor
+    result), that handle must be closed rather than leaked — it was never
+    assigned to self._bus.
+
+    This race is genuinely timing-dependent in production (a real
+    ThreadPoolExecutor result racing a Task.cancel() call), which makes it
+    impractical to reproduce deterministically with real threads. Instead we
+    substitute a fake awaitable in place of the executor job: it reports
+    itself as done with the real bus as its result (exactly like an executor
+    Future that resolved just before cancellation was delivered), but raises
+    CancelledError from __await__ (exactly what `await fut` does once the
+    owning Task has been cancelled). This exercises the precise code path in
+    `_open_bus`'s except handler without relying on thread-scheduling luck.
+    """
+    ctrl = _make_controller(hass)
+    fake_bus = MagicMock()
+
+    class _RacedExecutorFuture:
+        """Mimics an executor Future that finished before cancellation landed."""
+
+        def done(self) -> bool:
+            return True
+
+        def cancelled(self) -> bool:
+            return False
+
+        def exception(self) -> BaseException | None:
+            return None
+
+        def result(self) -> MagicMock:
+            return fake_bus
+
+        def __await__(self):
+            raise asyncio.CancelledError
+            yield  # pragma: no cover - unreachable, satisfies generator syntax
+
+    def fake_async_add_executor_job(*args, **kwargs):
+        return _RacedExecutorFuture()
+
+    with patch.object(
+        ctrl.hass, "async_add_executor_job", side_effect=fake_async_add_executor_job
+    ):
+        with pytest.raises(asyncio.CancelledError):
+            await ctrl._open_bus()
+
+    fake_bus.shutdown.assert_called_once()
+    assert ctrl._bus is None
+
+
 async def test_ingest_rejects_unknown_arbitration_id(hass: HomeAssistant) -> None:
     """Frames on unknown CAN IDs must be silently dropped."""
     ctrl = _make_controller(hass)

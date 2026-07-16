@@ -291,9 +291,15 @@ class DobissController:
             except Exception:  # noqa: BLE001
                 _LOGGER.debug("Error closing stale bus", exc_info=True)
 
-        self._bus = await self.hass.async_add_executor_job(
-            self.connection.make_bus
-        )
+        fut = self.hass.async_add_executor_job(self.connection.make_bus)
+        try:
+            self._bus = await fut
+        except asyncio.CancelledError:
+            if fut.done() and not fut.cancelled() and fut.exception() is None:
+                orphan = fut.result()
+                with contextlib.suppress(Exception):
+                    orphan.shutdown()
+            raise
 
     async def async_shutdown(self) -> None:
         """Cancel the reader and close the bus."""
