@@ -80,6 +80,21 @@ async def test_coordinator_setup_raises_not_ready_on_non_os_error(
         await coordinator._async_setup()
 
 
+async def test_coordinator_setup_failure_shuts_down_controller(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """_async_setup must call async_shutdown on controller setup failure."""
+    entry = _make_entry(hass)
+    coordinator = DobissCoordinator(hass, entry)
+
+    mock_controller.async_setup.side_effect = Exception("CAN init failed")
+
+    with pytest.raises(ConfigEntryNotReady):
+        await coordinator._async_setup()
+
+    mock_controller.async_shutdown.assert_called_once()
+
+
 async def test_coordinator_listener_invokes_update(
     hass: HomeAssistant, mock_controller
 ) -> None:

@@ -113,6 +113,15 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
             }
         )
 
+    async def _async_probe(self, connection: ConnectionConfig) -> str | None:
+        """Probe the bus. Returns error key on failure, None on success."""
+        try:
+            await self.hass.async_add_executor_job(_probe_bus_sync, connection)
+        except Exception:  # noqa: BLE001
+            _LOGGER.debug("CAN probe failed", exc_info=True)
+            return "cannot_connect"
+        return None
+
     async def _build_usb_device_options(self) -> list[SelectOptionDict]:
         from homeassistant.components import usb  # noqa: PLC0415
 
@@ -171,13 +180,9 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
                 port=user_input[CONF_PORT],
                 interface=user_input[CONF_INTERFACE],
             )
-            try:
-                await self.hass.async_add_executor_job(
-                    _probe_bus_sync, conn
-                )
-            except Exception as err:  # noqa: BLE001
-                _LOGGER.debug("CAN probe failed: %s", err)
-                errors["base"] = "cannot_connect"
+            error = await self._async_probe(conn)
+            if error:
+                errors["base"] = error
             else:
                 return self.async_create_entry(
                     title=f"Max200 ({conn.description})",
@@ -218,13 +223,9 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
                 baudrate=DEFAULT_BAUDRATE,
                 can_interface="slcan",
             )
-            try:
-                await self.hass.async_add_executor_job(
-                    _probe_bus_sync, conn
-                )
-            except Exception as err:  # noqa: BLE001
-                _LOGGER.debug("CAN probe failed: %s", err)
-                errors["base"] = "cannot_connect"
+            error = await self._async_probe(conn)
+            if error:
+                errors["base"] = error
             else:
                 return self.async_create_entry(
                     title=f"Max200 ({conn.description})",
@@ -289,13 +290,9 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
                 port=user_input[CONF_PORT],
                 interface=user_input[CONF_INTERFACE],
             )
-            try:
-                await self.hass.async_add_executor_job(
-                    _probe_bus_sync, conn
-                )
-            except Exception as err:  # noqa: BLE001
-                _LOGGER.debug("CAN probe failed: %s", err)
-                errors["base"] = "cannot_connect"
+            error = await self._async_probe(conn)
+            if error:
+                errors["base"] = error
             else:
                 new_data = {
                     **entry.data,
@@ -344,13 +341,9 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
                 baudrate=DEFAULT_BAUDRATE,
                 can_interface="slcan",
             )
-            try:
-                await self.hass.async_add_executor_job(
-                    _probe_bus_sync, conn
-                )
-            except Exception as err:  # noqa: BLE001
-                _LOGGER.debug("CAN probe failed: %s", err)
-                errors["base"] = "cannot_connect"
+            error = await self._async_probe(conn)
+            if error:
+                errors["base"] = error
             else:
                 new_data = {
                     **entry.data,
@@ -417,13 +410,9 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
                 port=user_input[CONF_PORT],
                 interface=user_input[CONF_INTERFACE],
             )
-            try:
-                await self.hass.async_add_executor_job(
-                    _probe_bus_sync, conn
-                )
-            except Exception as err:  # noqa: BLE001
-                _LOGGER.debug("CAN probe failed: %s", err)
-                errors["base"] = "cannot_connect"
+            error = await self._async_probe(conn)
+            if error:
+                errors["base"] = error
             else:
                 return self.async_update_reload_and_abort(
                     entry,
@@ -471,13 +460,9 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
                 baudrate=DEFAULT_BAUDRATE,
                 can_interface="slcan",
             )
-            try:
-                await self.hass.async_add_executor_job(
-                    _probe_bus_sync, conn
-                )
-            except Exception as err:  # noqa: BLE001
-                _LOGGER.debug("CAN probe failed: %s", err)
-                errors["base"] = "cannot_connect"
+            error = await self._async_probe(conn)
+            if error:
+                errors["base"] = error
             else:
                 return self.async_update_reload_and_abort(
                     entry,

@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from homeassistant.components.cover import CoverEntityFeature
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -15,6 +16,7 @@ from custom_components.dobiss_sx_evolution.const import (
     DOMAIN,
     SUBENTRY_TYPE_MODULE,
 )
+from custom_components.dobiss_sx_evolution.controller import ShutterConfig
 
 from .conftest import MOCK_CONFIG, MOCK_CONNECTION
 
@@ -150,3 +152,89 @@ async def test_stop_cover_can_error_raises_ha_error(hass: HomeAssistant) -> None
             {"entity_id": "cover.sx_evo_module_a_output_9_living_room_blind"},
             blocking=True,
         )
+
+
+async def test_open_cover_calls_controller(hass: HomeAssistant) -> None:
+    """Opening the cover must call async_open_shutter with the right shutter."""
+    entry = await _setup(hass)
+
+    await hass.services.async_call(
+        "cover",
+        "open_cover",
+        {"entity_id": "cover.sx_evo_module_a_output_9_living_room_blind"},
+        blocking=True,
+    )
+
+    coordinator = entry.runtime_data
+    coordinator.controller.async_open_shutter.assert_awaited_once_with(
+        ShutterConfig(module="A", up_output=9, down_output=10)
+    )
+
+
+async def test_close_cover_calls_controller(hass: HomeAssistant) -> None:
+    """Closing the cover must call async_close_shutter with the right shutter."""
+    entry = await _setup(hass)
+
+    await hass.services.async_call(
+        "cover",
+        "close_cover",
+        {"entity_id": "cover.sx_evo_module_a_output_9_living_room_blind"},
+        blocking=True,
+    )
+
+    coordinator = entry.runtime_data
+    coordinator.controller.async_close_shutter.assert_awaited_once_with(
+        ShutterConfig(module="A", up_output=9, down_output=10)
+    )
+
+
+async def test_stop_cover_calls_controller(hass: HomeAssistant) -> None:
+    """Stopping the cover must call async_stop_shutter with the right shutter."""
+    entry = await _setup(hass)
+
+    await hass.services.async_call(
+        "cover",
+        "stop_cover",
+        {"entity_id": "cover.sx_evo_module_a_output_9_living_room_blind"},
+        blocking=True,
+    )
+
+    coordinator = entry.runtime_data
+    coordinator.controller.async_stop_shutter.assert_awaited_once_with(
+        ShutterConfig(module="A", up_output=9, down_output=10)
+    )
+
+
+async def test_cover_state_attributes(hass: HomeAssistant) -> None:
+    """Shutters are open-loop: assumed_state, unknown position, shade class."""
+    await _setup(hass)
+
+    state = hass.states.get("cover.sx_evo_module_a_output_9_living_room_blind")
+    assert state is not None
+
+    assert state.attributes.get("assumed_state") is True
+    assert state.state == "unknown"
+    assert state.attributes.get("device_class") == "shade"
+
+    supported = state.attributes.get("supported_features", 0)
+    assert supported & CoverEntityFeature.OPEN
+    assert supported & CoverEntityFeature.CLOSE
+    assert supported & CoverEntityFeature.STOP
+
+
+async def test_cover_unavailable_when_bus_disconnected(hass: HomeAssistant) -> None:
+    """The cover entity must go unavailable when the CAN bus disconnects."""
+    entry = await _setup(hass)
+
+    state = hass.states.get("cover.sx_evo_module_a_output_9_living_room_blind")
+    assert state is not None
+    assert state.state != "unavailable"
+
+    coordinator = entry.runtime_data
+    coordinator.controller.is_bus_connected = False
+    coordinator.async_set_updated_data(coordinator.data)
+    await hass.async_block_till_done()
+
+    state = hass.states.get("cover.sx_evo_module_a_output_9_living_room_blind")
+    assert state is not None
+    assert state.state == "unavailable"

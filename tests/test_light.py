@@ -20,6 +20,10 @@ from custom_components.dobiss_sx_evolution.const import (
     DOMAIN,
     SUBENTRY_TYPE_MODULE,
 )
+from custom_components.dobiss_sx_evolution.protocol import (
+    can_to_ha_brightness,
+    ha_to_can_brightness,
+)
 
 from .conftest import MOCK_CONFIG, MOCK_CONNECTION
 
@@ -284,3 +288,109 @@ async def test_turn_off_can_error_raises_ha_error(hass: HomeAssistant) -> None:
             {"entity_id": "light.sx_evo_module_a_output_1_living_room"},
             blocking=True,
         )
+
+
+def _get_light_entity(hass: HomeAssistant, entity_id: str):
+    """Look up the live entity object from the platform."""
+    from homeassistant.helpers import entity_platform as ep
+
+    platforms = ep.async_get_platforms(hass, DOMAIN)
+    light_platform = next(p for p in platforms if p.domain == "light")
+    return light_platform.entities[entity_id]
+
+
+async def test_turn_on_with_brightness_sets_optimistic_value(
+    hass: HomeAssistant,
+) -> None:
+    """turn_on with explicit brightness must retain the HA value, not quantise."""
+    entry = await _setup(hass, dimmable=True)
+    entity_id = "light.sx_evo_module_a_output_1_living_room"
+
+    await hass.services.async_call(
+        "light",
+        "turn_on",
+        {"entity_id": entity_id, ATTR_BRIGHTNESS: 128},
+        blocking=True,
+    )
+
+    entity = _get_light_entity(hass, entity_id)
+    assert entity.brightness == 128
+
+    coordinator = entry.runtime_data
+    coordinator.controller.async_turn_on.assert_awaited_once_with(
+        ("A", 1), brightness=128
+    )
+
+
+async def test_optimistic_brightness_retained_on_matching_echo(
+    hass: HomeAssistant,
+) -> None:
+    """When the CAN echo matches what we sent, keep the optimistic HA value."""
+    entry = await _setup(hass, dimmable=True)
+    entity_id = "light.sx_evo_module_a_output_1_living_room"
+
+    await hass.services.async_call(
+        "light",
+        "turn_on",
+        {"entity_id": entity_id, ATTR_BRIGHTNESS: 128},
+        blocking=True,
+    )
+
+    coordinator = entry.runtime_data
+    echo_can_value = ha_to_can_brightness(128)
+    coordinator.controller.states = {("A", 1): echo_can_value}
+    coordinator.async_set_updated_data(dict(coordinator.controller.states))
+    await hass.async_block_till_done()
+
+    entity = _get_light_entity(hass, entity_id)
+    assert entity.brightness == 128
+
+
+async def test_optimistic_brightness_cleared_on_external_change(
+    hass: HomeAssistant,
+) -> None:
+    """A wall-switch dim must clear optimistic state and fall back to CAN value."""
+    entry = await _setup(hass, dimmable=True)
+    entity_id = "light.sx_evo_module_a_output_1_living_room"
+
+    await hass.services.async_call(
+        "light",
+        "turn_on",
+        {"entity_id": entity_id, ATTR_BRIGHTNESS: 128},
+        blocking=True,
+    )
+
+    coordinator = entry.runtime_data
+    wall_switch_can_value = 45
+    coordinator.controller.states = {("A", 1): wall_switch_can_value}
+    coordinator.async_set_updated_data(dict(coordinator.controller.states))
+    await hass.async_block_till_done()
+
+    entity = _get_light_entity(hass, entity_id)
+    assert entity.brightness == can_to_ha_brightness(wall_switch_can_value)
+    assert entity._optimistic_can_value is None
+
+
+async def test_turn_on_brightness_error_rolls_back_optimistic_state(
+    hass: HomeAssistant,
+) -> None:
+    """A failed turn_on must roll back optimistic brightness to None."""
+    entry = await _setup(hass, dimmable=True)
+    entity_id = "light.sx_evo_module_a_output_1_living_room"
+
+    coordinator = entry.runtime_data
+    coordinator.controller.async_turn_on = AsyncMock(
+        side_effect=Exception("CAN send failed")
+    )
+
+    with pytest.raises(HomeAssistantError):
+        await hass.services.async_call(
+            "light",
+            "turn_on",
+            {"entity_id": entity_id, ATTR_BRIGHTNESS: 128},
+            blocking=True,
+        )
+
+    entity = _get_light_entity(hass, entity_id)
+    assert entity._attr_brightness is None
+    assert entity._optimistic_can_value is None

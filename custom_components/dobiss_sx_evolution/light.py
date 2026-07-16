@@ -36,23 +36,23 @@ async def async_setup_entry(
             continue
         module: str = subentry.data["module"]
         dimmable: bool = subentry.data.get("dimmable", False)
+        entities: list[DobissLight] = []
         for output_str, cfg in subentry.data.get("outputs", {}).items():
             if cfg.get("type") != "light":
                 continue
             output = int(output_str)
             entity_name: str = cfg.get("name") or f"{module}{output}"
-            async_add_entities(
-                [
-                    DobissLight(
-                        coordinator=coordinator,
-                        module_subentry_id=subentry_id,
-                        key=(module, output),
-                        entity_name=entity_name,
-                        dimmable=dimmable,
-                    )
-                ],
-                config_subentry_id=subentry_id,
+            entities.append(
+                DobissLight(
+                    coordinator=coordinator,
+                    module_subentry_id=subentry_id,
+                    key=(module, output),
+                    entity_name=entity_name,
+                    dimmable=dimmable,
+                )
             )
+        if entities:
+            async_add_entities(entities, config_subentry_id=subentry_id)
 
 
 class DobissLight(DobissEntity, LightEntity):

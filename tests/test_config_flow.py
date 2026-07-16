@@ -73,7 +73,7 @@ async def _setup_loaded_entry(
     return entry
 
 
-async def test_user_flow_success(hass: HomeAssistant, mock_probe) -> None:
+async def test_user_flow_success(hass: HomeAssistant, mock_probe, mock_controller) -> None:
     """Happy-path user flow creates a config entry."""
     # Step 1: Show connection type selector
     result = await hass.config_entries.flow.async_init(

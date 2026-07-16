@@ -4,10 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-- Install dev deps: `pip install ".[dev]"` (Python ≥3.12, HA target `2026.6.0`).
+- Install dev deps: `pip install ".[dev]"` (Python ≥3.14.2, floor comes from PHACC's `homeassistant` pin).
 - Run tests: `pytest`
 - Single test: `pytest tests/test_coordinator.py::test_name -x`
-- CI runs `hacs/action` (integration) and `home-assistant/actions/hassfest` on push/PR — no local lint config, but ruff/mypy caches exist so keep code passing default ruff and mypy.
+- CI runs `hacs/action` (integration), `home-assistant/actions/hassfest`, and a `test` job (ruff, mypy, pytest) on push/PR — no local lint config, but ruff/mypy caches exist so keep code passing default ruff and mypy.
 
 ## Architecture
 
@@ -32,5 +32,5 @@ Key domain constraints:
 
 - **Do not bump `VERSION` or add `async_migrate_entry`** — pre-release, config entry version is pinned at 1. See `memory/feedback_no_config_entry_version_bumps.md`.
 - `manifest.json` declares `dependencies: ["usb"]` (needed for hassfest since USB discovery is used).
-- `python-can`'s socketcand client busy-loops ~10s on a closed port; `controller.make_bus_sync` does a 2s TCP pre-check to fail fast — keep it.
+- `python-can`'s socketcand client busy-loops ~10s on a closed port; `SocketcandConnection.make_bus` does a 2s TCP pre-check to fail fast — keep it.
 - Brightness scaling is asymmetric on purpose (RX 0–90 echo, TX 0–144 step 16). Any change needs to hold `test_protocol.py`'s round-trip assertions.

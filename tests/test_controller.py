@@ -419,3 +419,26 @@ async def test_async_shutdown_closes_bus_even_when_notifier_raises(
     assert ctrl._notifier is None
     assert ctrl._reader is None
     assert ctrl._bus is None
+
+
+async def test_read_frames_raises_on_liveness_timeout(hass: HomeAssistant) -> None:
+    """_read_frames must raise RuntimeError if the reader stays silent too long."""
+    ctrl = _make_controller(hass)
+    ctrl._bus = MagicMock()
+
+    async def fake_get_message():
+        await asyncio.Event().wait()
+
+    fake_reader = MagicMock()
+    fake_reader.get_message = fake_get_message
+    ctrl._reader = fake_reader
+    ctrl._notifier = MagicMock()
+
+    with (
+        patch(
+            "custom_components.dobiss_sx_evolution.controller.LIVENESS_TIMEOUT_S",
+            0.1,
+        ),
+        pytest.raises(RuntimeError, match="No CAN frames received"),
+    ):
+        await ctrl._read_frames()

@@ -175,13 +175,66 @@ async def test_reload_listener_output_only_change_skips_full_reload(
     # Platform unload and re-forward must have been called.
     assert unload_calls, "Expected async_unload_platforms to be called"
     assert forward_calls, "Expected async_forward_entry_setups to be called"
-    # The fast path must NOT send a dump request: the DOBISS controller
-    # takes several seconds to respond to a dump, and any state write sent
-    # while the dump burst is in progress is delayed until the burst ends.
+    # The fast path must NOT call the full refresh-and-settle flow.
     assert mock_controller.async_refresh_and_settle.await_count == 0, (
-        "Output-only reload must not trigger a dump; the cached state is "
+        "Output-only reload must not trigger a full refresh; the cached state is "
         "pushed via async_set_updated_data instead"
     )
+    # A lightweight dump IS requested so new entities pick up real hardware state.
+    mock_controller.async_request_dump.assert_awaited_once()
+
+
+async def test_reload_listener_output_only_suppresses_dump_failure(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """A failing post-reload dump request must not propagate from the listener."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=_make_entry_data(),
+        title="DOBISS",
+        version=1,
+        subentries_data=[_make_subentry_data("A", {"1": {"type": "light", "name": "L1"}})],
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entry.state is ConfigEntryState.LOADED
+
+    mock_controller.async_request_dump = AsyncMock(side_effect=Exception("boom"))
+
+    updated_entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=_make_entry_data(),
+        title="DOBISS",
+        version=1,
+        subentries_data=[
+            _make_subentry_data(
+                "A",
+                {
+                    "1": {"type": "light", "name": "L1"},
+                    "2": {"type": "light", "name": "L2"},
+                },
+            )
+        ],
+    )
+    updated_entry.add_to_hass(hass)
+    updated_entry.runtime_data = entry.runtime_data
+
+    listener = _make_reload_listener(entry)
+
+    with (
+        patch.object(hass.config_entries, "async_reload", new=AsyncMock()) as full_reload,
+        patch.object(
+            hass.config_entries,
+            "async_unload_platforms",
+            new=AsyncMock(return_value=True),
+        ),
+        patch.object(hass.config_entries, "async_forward_entry_setups", new=AsyncMock()),
+    ):
+        await listener(hass, updated_entry)
+
+    assert not full_reload.called
+    mock_controller.async_request_dump.assert_awaited_once()
 
 
 async def test_reload_listener_new_module_triggers_full_reload(

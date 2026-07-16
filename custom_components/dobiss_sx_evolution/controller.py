@@ -18,6 +18,7 @@ from .const import (
     CAN_ID_TX_STATE,
     DISCOVERY_TIMEOUT_S,
     DOMAIN,
+    LIVENESS_TIMEOUT_S,
     MAX_CAN_BRIGHTNESS_TX,
 )
 from .protocol import (
@@ -583,7 +584,14 @@ class DobissController:
 
         try:
             while True:
-                msg = await reader.get_message()
+                try:
+                    msg = await asyncio.wait_for(
+                        reader.get_message(), timeout=LIVENESS_TIMEOUT_S
+                    )
+                except TimeoutError:
+                    raise RuntimeError(
+                        f"No CAN frames received for {LIVENESS_TIMEOUT_S}s"
+                    ) from None
                 self._ingest_message(msg)
         except asyncio.CancelledError:
             raise
@@ -599,7 +607,7 @@ class DobissController:
 
         The DOBISS controller broadcasts ALL state updates - both dump
         responses and wall-switch presses - on arbitration ID 0x1010000.
-        State writes we send on 0x800002 may echo back via SocketCAN
+        State writes we send on 0x800102 may echo back via SocketCAN
         loopback, so we explicitly drop those.
 
         Returns the parsed StateUpdate (if any) so callers can reuse it

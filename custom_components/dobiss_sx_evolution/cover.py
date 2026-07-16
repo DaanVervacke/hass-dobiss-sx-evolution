@@ -32,6 +32,7 @@ async def async_setup_entry(
         if subentry.subentry_type != SUBENTRY_TYPE_MODULE:
             continue
         module: str = subentry.data["module"]
+        entities: list[DobissShutter] = []
         for output_str, cfg in subentry.data.get("outputs", {}).items():
             if cfg.get("type") != "shutter":
                 continue
@@ -41,17 +42,16 @@ async def async_setup_entry(
                 module=module, up_output=up_output, down_output=down_output
             )
             entity_name: str = cfg.get("name") or f"Shutter {module}{up_output}"
-            async_add_entities(
-                [
-                    DobissShutter(
-                        coordinator=coordinator,
-                        module_subentry_id=subentry_id,
-                        shutter=shutter,
-                        entity_name=entity_name,
-                    )
-                ],
-                config_subentry_id=subentry_id,
+            entities.append(
+                DobissShutter(
+                    coordinator=coordinator,
+                    module_subentry_id=subentry_id,
+                    shutter=shutter,
+                    entity_name=entity_name,
+                )
             )
+        if entities:
+            async_add_entities(entities, config_subentry_id=subentry_id)
 
 
 class DobissShutter(DobissEntity, CoverEntity):

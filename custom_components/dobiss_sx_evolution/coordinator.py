@@ -125,6 +125,7 @@ class DobissCoordinator(DataUpdateCoordinator[dict[OutputKey, int]]):
         try:
             await self.controller.async_setup()
         except Exception as err:
+            await self.controller.async_shutdown()
             raise ConfigEntryNotReady(
                 f"Cannot open CAN connection "
                 f"{self.controller.connection.description}: {err}"
