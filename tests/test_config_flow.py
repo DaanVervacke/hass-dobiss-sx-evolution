@@ -10,6 +10,8 @@ from homeassistant.data_entry_flow import FlowResultType, InvalidData
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.dobiss_sx_evolution.config_flow import (
+    DobissConfigFlow,
+    ModuleSubentryFlowHandler,
     _occupied_outputs_in_module,
     _validate_module,
 )
@@ -101,6 +103,39 @@ async def test_user_flow_success(hass: HomeAssistant, mock_probe, mock_controlle
     assert result3["data"]["port"] == MOCK_CONFIG["port"]
     assert result3["data"]["interface"] == MOCK_CONFIG["interface"]
     assert mock_probe.called
+
+
+async def test_user_flow_invalid_connection_type(hass: HomeAssistant) -> None:
+    """Submitting an unrecognized connection type shows an error.
+
+    The SelectSelector schema normally rejects unlisted values before the
+    step handler runs (custom_value defaults to False), so the
+    invalid_connection_type branch is only reachable by invoking the step
+    method directly, bypassing schema-level validation.
+    """
+    flow = DobissConfigFlow()
+    flow.hass = hass
+
+    result = await flow.async_step_user({"connection_type": "nonexistent"})
+
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "user"
+    assert result["errors"]["connection_type"] == "invalid_connection_type"
+
+
+async def test_reconfigure_invalid_connection_type(hass: HomeAssistant) -> None:
+    """Submitting an unrecognized connection type on reconfigure shows an error.
+
+    Same schema-bypass rationale as test_user_flow_invalid_connection_type.
+    """
+    flow = DobissConfigFlow()
+    flow.hass = hass
+
+    result = await flow.async_step_reconfigure({"connection_type": "nonexistent"})
+
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "reconfigure"
+    assert result["errors"]["connection_type"] == "invalid_connection_type"
 
 
 async def test_user_flow_cannot_connect(hass: HomeAssistant) -> None:
@@ -678,6 +713,38 @@ async def test_subentry_add_light_invalid_output(
     assert result3["errors"]["output"] == "invalid_output"
 
 
+async def test_subentry_add_light_output_too_high(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """Output number above 12 is rejected."""
+    entry = await _setup_loaded_entry(
+        hass,
+        mock_controller,
+        subentries_data=[{
+            "subentry_type": SUBENTRY_TYPE_MODULE,
+            "title": "Module A",
+            "unique_id": "module:A",
+            "data": {"module": "A", "dimmable": False, "outputs": {}},
+        }],
+    )
+    sub_id = next(iter(entry.subentries))
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_MODULE),
+        context={"source": "reconfigure", "subentry_id": sub_id},
+    )
+    result2 = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        user_input={"next_step_id": "add_light"},
+    )
+    result3 = await hass.config_entries.subentries.async_configure(
+        result2["flow_id"],
+        user_input={"output": 13, "name": "Bad"},
+    )
+    assert result3["type"] == FlowResultType.FORM
+    assert result3["errors"]["output"] == "invalid_output"
+
+
 async def test_subentry_add_light_duplicate_output(
     hass: HomeAssistant, mock_controller
 ) -> None:
@@ -791,6 +858,106 @@ async def test_subentry_add_shutter_same_output(
     assert result3["errors"]["base"] == "same_output"
 
 
+async def test_subentry_add_shutter_down_output_zero_rejected(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """down_output below 1 is rejected."""
+    entry = await _setup_loaded_entry(
+        hass,
+        mock_controller,
+        subentries_data=[{
+            "subentry_type": SUBENTRY_TYPE_MODULE,
+            "title": "Module A",
+            "unique_id": "module:A",
+            "data": {"module": "A", "dimmable": False, "outputs": {}},
+        }],
+    )
+    sub_id = next(iter(entry.subentries))
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_MODULE),
+        context={"source": "reconfigure", "subentry_id": sub_id},
+    )
+    result2 = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        user_input={"next_step_id": "add_shutter"},
+    )
+    result3 = await hass.config_entries.subentries.async_configure(
+        result2["flow_id"],
+        user_input={"up_output": 1, "down_output": 0, "name": "Bad"},
+    )
+    assert result3["type"] == FlowResultType.FORM
+    assert result3["errors"]["down_output"] == "invalid_output"
+
+
+async def test_subentry_add_shutter_down_output_too_high(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """down_output above 12 is rejected."""
+    entry = await _setup_loaded_entry(
+        hass,
+        mock_controller,
+        subentries_data=[{
+            "subentry_type": SUBENTRY_TYPE_MODULE,
+            "title": "Module A",
+            "unique_id": "module:A",
+            "data": {"module": "A", "dimmable": False, "outputs": {}},
+        }],
+    )
+    sub_id = next(iter(entry.subentries))
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_MODULE),
+        context={"source": "reconfigure", "subentry_id": sub_id},
+    )
+    result2 = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        user_input={"next_step_id": "add_shutter"},
+    )
+    result3 = await hass.config_entries.subentries.async_configure(
+        result2["flow_id"],
+        user_input={"up_output": 1, "down_output": 13, "name": "Bad"},
+    )
+    assert result3["type"] == FlowResultType.FORM
+    assert result3["errors"]["down_output"] == "invalid_output"
+
+
+async def test_subentry_add_shutter_up_output_occupied(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """Cannot add a shutter if the up output is already occupied."""
+    entry = await _setup_loaded_entry(
+        hass,
+        mock_controller,
+        subentries_data=[{
+            "subentry_type": SUBENTRY_TYPE_MODULE,
+            "title": "Module A",
+            "unique_id": "module:A",
+            "data": {
+                "module": "A",
+                "dimmable": False,
+                "outputs": {"9": {"type": "light", "name": "L9"}},
+            },
+        }],
+    )
+    sub_id = next(iter(entry.subentries))
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_MODULE),
+        context={"source": "reconfigure", "subentry_id": sub_id},
+    )
+    result2 = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        user_input={"next_step_id": "add_shutter"},
+    )
+    result3 = await hass.config_entries.subentries.async_configure(
+        result2["flow_id"],
+        user_input={"up_output": 9, "down_output": 10, "name": "Blind"},
+    )
+    assert result3["type"] == FlowResultType.FORM
+    assert result3["errors"]["up_output"] == "duplicate_output"
+
+
 async def test_subentry_add_shutter_down_output_occupied(
     hass: HomeAssistant, mock_controller
 ) -> None:
@@ -874,6 +1041,75 @@ async def test_subentry_remove_output_success(
     assert "1" not in sub.data["outputs"]
 
 
+async def test_subentry_remove_output_no_outputs_aborts(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """Navigating to remove_output on a module with no outputs aborts.
+
+    The reconfigure menu omits remove_output when outputs is empty, and the
+    menu's next_step_id is schema-validated against menu_options, so this
+    step can only be reached by invoking it directly on the flow handler,
+    the same way a stale/cached form submission would.
+    """
+    entry = await _setup_loaded_entry(
+        hass,
+        mock_controller,
+        subentries_data=[{
+            "subentry_type": SUBENTRY_TYPE_MODULE,
+            "title": "Module A",
+            "unique_id": "module:A",
+            "data": {"module": "A", "dimmable": False, "outputs": {}},
+        }],
+    )
+    sub_id = next(iter(entry.subentries))
+
+    flow = ModuleSubentryFlowHandler()
+    flow.hass = hass
+    flow.handler = (entry.entry_id, SUBENTRY_TYPE_MODULE)
+    flow.context = {"source": "reconfigure", "subentry_id": sub_id}
+
+    result = await flow.async_step_remove_output(None)
+
+    assert result["type"] == FlowResultType.ABORT
+    assert result["reason"] == "no_outputs_to_remove"
+
+
+async def test_subentry_remove_output_invalid_output(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """Submitting an output key that is not in the outputs dict is rejected.
+
+    The remove_output form's SelectSelector only offers existing output
+    keys, so this branch is only reachable by invoking the step directly,
+    the same way a stale/cached form submission would.
+    """
+    entry = await _setup_loaded_entry(
+        hass,
+        mock_controller,
+        subentries_data=[{
+            "subentry_type": SUBENTRY_TYPE_MODULE,
+            "title": "Module A",
+            "unique_id": "module:A",
+            "data": {
+                "module": "A",
+                "dimmable": False,
+                "outputs": {"1": {"type": "light", "name": "L1"}},
+            },
+        }],
+    )
+    sub_id = next(iter(entry.subentries))
+
+    flow = ModuleSubentryFlowHandler()
+    flow.hass = hass
+    flow.handler = (entry.entry_id, SUBENTRY_TYPE_MODULE)
+    flow.context = {"source": "reconfigure", "subentry_id": sub_id}
+
+    result = await flow.async_step_remove_output({"output": "5"})
+
+    assert result["type"] == FlowResultType.FORM
+    assert result["errors"]["output"] == "invalid_output"
+
+
 # ---------------------------------------------------------------------------
 # ModuleSubentryFlowHandler.async_step_edit_module
 # ---------------------------------------------------------------------------
@@ -917,6 +1153,38 @@ async def test_subentry_edit_module_rename(
     assert sub.data["module"] == "B"
     assert sub.data["dimmable"] is True
     assert sub.title == "Kitchen"
+
+
+async def test_subentry_edit_module_invalid_letter(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """A non-alpha module letter is rejected."""
+    entry = await _setup_loaded_entry(
+        hass,
+        mock_controller,
+        subentries_data=[{
+            "subentry_type": SUBENTRY_TYPE_MODULE,
+            "title": "Module A",
+            "unique_id": "module:A",
+            "data": {"module": "A", "dimmable": False, "outputs": {}},
+        }],
+    )
+    sub_id = next(iter(entry.subentries))
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_MODULE),
+        context={"source": "reconfigure", "subentry_id": sub_id},
+    )
+    result2 = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        user_input={"next_step_id": "edit_module"},
+    )
+    result3 = await hass.config_entries.subentries.async_configure(
+        result2["flow_id"],
+        user_input={"module": "1", "name": "", "dimmable": False},
+    )
+    assert result3["type"] == FlowResultType.FORM
+    assert result3["errors"]["module"] == "invalid_module"
 
 
 async def test_subentry_edit_module_duplicate_letter(

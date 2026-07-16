@@ -8,10 +8,13 @@ from homeassistant.helpers.update_coordinator import UpdateFailed
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.dobiss_sx_evolution.const import (
+    CONF_CONNECTION_TYPE,
+    CONF_DEVICE,
+    CONNECTION_TYPE_USB,
     DOMAIN,
     SUBENTRY_TYPE_MODULE,
 )
-from custom_components.dobiss_sx_evolution.controller import ShutterConfig
+from custom_components.dobiss_sx_evolution.controller import ShutterConfig, UsbConnection
 from custom_components.dobiss_sx_evolution.coordinator import (
     DobissCoordinator,
     parse_output_lists,
@@ -109,6 +112,30 @@ async def test_coordinator_listener_invokes_update(
 
     assert coordinator.data == {("01", 1): 1}
     assert coordinator.last_update_success is True
+
+
+async def test_coordinator_usb_connection(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """Coordinator must construct a UsbConnection for USB entries."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_CONNECTION_TYPE: CONNECTION_TYPE_USB, CONF_DEVICE: "/dev/ttyUSB0"},
+        title="DOBISS USB",
+    )
+    entry.add_to_hass(hass)
+
+    DobissCoordinator(hass, entry)
+
+    # mock_controller patches coordinator.DobissController with a MagicMock
+    # whose return_value is the fake controller. The patched class itself
+    # records the constructor call so we can inspect the connection kwarg.
+    from custom_components.dobiss_sx_evolution.coordinator import DobissController
+
+    call_kwargs = DobissController.call_args.kwargs  # type: ignore[attr-defined]
+    connection = call_kwargs["connection"]
+    assert isinstance(connection, UsbConnection)
+    assert connection.device == "/dev/ttyUSB0"
 
 
 # ---------------------------------------------------------------------------
