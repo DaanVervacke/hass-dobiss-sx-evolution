@@ -58,6 +58,9 @@
         "description": "Update how Home Assistant connects to your DOBISS SX Evolution CAN bus.",
         "data": {
           "connection_type": "Connection type"
+        },
+        "data_description": {
+          "connection_type": "How Home Assistant connects to the DOBISS CAN bus: socketcand daemon or USB adapter."
         }
       },
       "reconfigure_socketcand": {
@@ -91,12 +94,12 @@
       "invalid_connection_type": "Select a valid connection type.",
       "invalid_output": "Provide valid output settings.",
       "same_output": "Up and down outputs must be different.",
-      "duplicate_output": "That output is already in use by another light or shutter on this module."
+      "duplicate_output": "That output is already in use by another light, shutter, or switch on this module."
     },
     "abort": {
       "already_configured": "This DOBISS connection is already set up in Home Assistant.",
       "reauth_successful": "Reconnected to the DOBISS CAN bus.",
-      "reconfigure_successful": "Successfully reconfigured",
+      "reconfigure_successful": "[%key:common::config_flow::abort::reconfigure_successful%]",
       "no_outputs_to_remove": "This module doesn't have any outputs to remove yet."
     }
   },
@@ -128,6 +131,7 @@
           "menu_options": {
             "add_light": "Add a light",
             "add_shutter": "Add a shutter",
+            "add_switch": "Add a switch",
             "remove_output": "Remove an output",
             "edit_module": "Edit module settings"
           }
@@ -140,7 +144,7 @@
             "name": "Friendly name"
           },
           "data_description": {
-            "output": "The output number on the module this light is wired to (1, 2, 3, ...). Each output can only be used by one light or shutter.",
+            "output": "The output number on the module this light is wired to (1, 2, 3, ...). Each output can only be used by one light, shutter, or switch.",
             "name": "Optional. The name Home Assistant will show, for example \"Kitchen ceiling\" or \"Reading lamp\"."
           }
         },
@@ -158,9 +162,21 @@
             "name": "Optional. The name Home Assistant will show, for example \"Living room blind\" or \"Bedroom screen\"."
           }
         },
+        "add_switch": {
+          "title": "Add a switch",
+          "description": "Pick the output this switch is wired to. Use this for generic on/off relay outputs that are not lights or shutters.",
+          "data": {
+            "output": "Output number",
+            "name": "Friendly name"
+          },
+          "data_description": {
+            "output": "The output number on the module this switch is wired to (1, 2, 3, ...). Each output can only be used by one light, shutter, or switch.",
+            "name": "Optional. The name Home Assistant will show for this switch."
+          }
+        },
         "remove_output": {
           "title": "Remove an output",
-          "description": "Pick the light or shutter you want to remove from this module. Its Home Assistant entity will disappear on the next reload.",
+          "description": "Pick the light, shutter, or switch you want to remove from this module. Its Home Assistant entity will disappear on the next reload.",
           "data": {
             "output": "Output"
           },
@@ -187,7 +203,7 @@
         "invalid_module": "Use a single letter from A to Z.",
         "module_already_exists": "You already have a module with that letter.",
         "invalid_output": "Output number must be 1 or higher.",
-        "duplicate_output": "Another light or shutter on this module is already using that output.",
+        "duplicate_output": "Another light, shutter, or switch on this module is already using that output.",
         "same_output": "Up and down need to be different outputs.",
         "no_outputs_to_remove": "This module doesn't have any outputs to remove yet."
       },
