@@ -10,7 +10,6 @@ from homeassistant.components.cover import (
     CoverEntityFeature,
 )
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .const import SUBENTRY_TYPE_MODULE
@@ -92,30 +91,15 @@ class DobissShutter(DobissEntity, CoverEntity):
 
     async def async_open_cover(self, **kwargs: Any) -> None:
         """Open the cover."""
-        try:
+        async with self._bus_call():
             await self.coordinator.controller.async_open_shutter(self._shutter)
-        except Exception as err:
-            raise HomeAssistantError(
-                translation_domain="dobiss_sx_evolution",
-                translation_key="cannot_send",
-            ) from err
 
     async def async_close_cover(self, **kwargs: Any) -> None:
         """Close the cover."""
-        try:
+        async with self._bus_call():
             await self.coordinator.controller.async_close_shutter(self._shutter)
-        except Exception as err:
-            raise HomeAssistantError(
-                translation_domain="dobiss_sx_evolution",
-                translation_key="cannot_send",
-            ) from err
 
     async def async_stop_cover(self, **kwargs: Any) -> None:
         """Stop the cover."""
-        try:
+        async with self._bus_call():
             await self.coordinator.controller.async_stop_shutter(self._shutter)
-        except Exception as err:
-            raise HomeAssistantError(
-                translation_domain="dobiss_sx_evolution",
-                translation_key="cannot_send",
-            ) from err

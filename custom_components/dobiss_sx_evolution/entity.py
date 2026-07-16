@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import slugify
@@ -42,3 +46,15 @@ class DobissEntity(CoordinatorEntity[DobissCoordinator]):
     @property
     def available(self) -> bool:
         return super().available and self.coordinator.controller.is_bus_connected
+
+    @staticmethod
+    @asynccontextmanager
+    async def _bus_call() -> AsyncIterator[None]:
+        """Wrap a controller call, converting bus errors to HomeAssistantError."""
+        try:
+            yield
+        except Exception as err:
+            raise HomeAssistantError(
+                translation_domain="dobiss_sx_evolution",
+                translation_key="cannot_send",
+            ) from err

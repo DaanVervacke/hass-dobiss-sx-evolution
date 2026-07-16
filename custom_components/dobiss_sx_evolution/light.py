@@ -164,10 +164,5 @@ class DobissLight(DobissEntity, LightEntity):
         """Turn the light off."""
         self._attr_brightness = None
         self._optimistic_can_value = None
-        try:
+        async with self._bus_call():
             await self.coordinator.controller.async_turn_off(self._key)
-        except Exception as err:
-            raise HomeAssistantError(
-                translation_domain="dobiss_sx_evolution",
-                translation_key="cannot_send",
-            ) from err
