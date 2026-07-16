@@ -168,7 +168,7 @@ on the first step.
 
 | Field | Default | Description |
 |---|---|---|
-| Host | -- | Hostname or IP address of the `socketcand` daemon |
+| Host | *required* | Hostname or IP address of the `socketcand` daemon |
 | Port | `29536` | TCP port the daemon listens on |
 | Remote CAN interface | `can0` | CAN interface name as configured in `socketcand` |
 
@@ -176,7 +176,7 @@ on the first step.
 
 | Field | Default | Description |
 |---|---|---|
-| Device | -- | Serial device path, picked from a dropdown of detected ports (e.g. `/dev/ttyACM0`, `/dev/serial/by-id/...`) |
+| Device | *required* | Serial device path, picked from a dropdown of detected ports (e.g. `/dev/ttyACM0`, `/dev/serial/by-id/...`) |
 
 The adapter is opened as an `slcan` bus at 115200 baud. The bus itself runs
 at 125 kbit/s (the Max200 line speed).
