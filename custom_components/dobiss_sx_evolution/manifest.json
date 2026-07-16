@@ -5,12 +5,11 @@
   "config_flow": true,
   "dependencies": ["usb"],
   "documentation": "https://github.com/DaanVervacke/hass-dobiss-sx-evolution",
-  "homeassistant": "2026.6.0",
   "integration_type": "hub",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/DaanVervacke/hass-dobiss-sx-evolution/issues",
   "loggers": ["dobiss_sx_evolution"],
   "quality_scale": "gold",
   "requirements": ["python-can==4.6.1", "pyserial==3.5"],
-  "version": "0.4.0"
+  "version": "0.4.1"
 }
