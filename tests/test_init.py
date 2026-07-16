@@ -78,6 +78,29 @@ async def test_unload_entry(hass: HomeAssistant, mock_controller) -> None:
     assert mock_controller.async_shutdown.called
 
 
+async def test_unload_entry_partial_failure(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """When platform unload fails, shutdown must NOT be called."""
+    entry = MockConfigEntry(
+        domain=DOMAIN, data=_make_entry_data(), title="DOBISS", version=1
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entry.state is ConfigEntryState.LOADED
+
+    with patch.object(
+        hass.config_entries,
+        "async_unload_platforms",
+        new=AsyncMock(return_value=False),
+    ):
+        result = await hass.config_entries.async_unload(entry.entry_id)
+
+    assert result is False
+    mock_controller.async_shutdown.assert_not_awaited()
+
+
 async def test_setup_entry_not_ready(hass: HomeAssistant, mock_controller) -> None:
     """OSError from controller.async_setup yields SETUP_RETRY (ConfigEntryNotReady)."""
     mock_controller.async_setup.side_effect = OSError("No such device")
@@ -507,6 +530,46 @@ async def test_refresh_service_calls_dump(
     await hass.async_block_till_done()
 
     assert hass.services.has_service(DOMAIN, "refresh")
+    await hass.services.async_call(DOMAIN, "refresh", blocking=True)
+
+    mock_controller.async_request_dump.assert_awaited_once()
+
+
+async def test_refresh_service_skips_non_loaded_entries(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """Refresh service must skip entries that are not in LOADED state."""
+    entry = MockConfigEntry(
+        domain=DOMAIN, data=_make_entry_data(), title="DOBISS", version=1
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entry.state is ConfigEntryState.LOADED
+
+    entry.mock_state(hass, ConfigEntryState.SETUP_RETRY)
+
+    await hass.services.async_call(DOMAIN, "refresh", blocking=True)
+
+    mock_controller.async_request_dump.assert_not_awaited()
+
+
+async def test_refresh_service_catches_dump_error(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """Refresh service must log and continue when dump raises."""
+    entry = MockConfigEntry(
+        domain=DOMAIN, data=_make_entry_data(), title="DOBISS", version=1
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    mock_controller.async_request_dump = AsyncMock(
+        side_effect=Exception("bus error")
+    )
+
+    # Must not raise.
     await hass.services.async_call(DOMAIN, "refresh", blocking=True)
 
     mock_controller.async_request_dump.assert_awaited_once()
