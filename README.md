@@ -198,8 +198,8 @@ From each module's **Reconfigure** menu you can manage outputs:
 
 - **Add light**: output number and an optional friendly name
 - **Add shutter**: up-output number, down-output number and an optional friendly name
+- **Remove output**: select an existing output to remove (only shown when the module has outputs)
 - **Add switch**: output number and an optional friendly name
-- **Remove output**: select an existing output to remove
 - **Edit module**: change the module letter, friendly name, or dimmable flag
 
 Each output number can only be claimed once per module. For shutters, the
@@ -245,7 +245,7 @@ If something is not working, try these steps before filing an issue:
    from the same menu. Home Assistant will offer to download the captured log.
 
 2. **Download diagnostics.** From the same three-dot menu, choose **Download
-   diagnostics**. The resulting JSON redacts your host address and is safe to
+   diagnostics**. The resulting JSON redacts your connection details and is safe to
    attach to a GitHub issue.
 
 3. **Common errors:**
