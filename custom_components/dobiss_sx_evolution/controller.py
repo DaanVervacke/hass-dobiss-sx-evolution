@@ -633,7 +633,7 @@ class DobissController:
         """Parse a CAN message and update local state if it matches an output.
 
         The DOBISS controller broadcasts ALL state updates - both dump
-        responses and wall-switch presses - on arbitration ID 0x1010000.
+        responses and wall-switch presses - on arbitration ID 0x100FF00.
         State writes we send on 0x800102 may echo back via SocketCAN
         loopback, so we explicitly drop those.
 
