@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant import config_entries
@@ -18,10 +18,13 @@ from custom_components.dobiss_sx_evolution.config_flow import (
 )
 from custom_components.dobiss_sx_evolution.const import (
     CONF_DEVICE,
+    CONF_MAX200_HOST,
+    CONF_MODULE,
     CONNECTION_TYPE_SOCKETCAND,
     CONNECTION_TYPE_USB,
     DOMAIN,
     SUBENTRY_TYPE_MODULE,
+    SUBENTRY_TYPE_MODULE_IMPORT,
 )
 
 from .conftest import MOCK_CONFIG
@@ -1554,3 +1557,264 @@ async def test_reauth_usb_flow_cannot_connect(
 
     assert result2["type"] == FlowResultType.FORM
     assert result2["errors"] == {"base": "cannot_connect"}
+
+
+# ---------------------------------------------------------------------------
+# ModuleImportSubentryFlowHandler
+# ---------------------------------------------------------------------------
+
+MOCK_CONFIG_WITH_MAX200 = {
+    **MOCK_CONFIG,
+    CONF_MAX200_HOST: "10.0.0.50",
+}
+
+
+def _make_config_response(*letters_and_slots: tuple[str, int]) -> bytes:
+    """Build a 36-byte ConfigVars response with the given modules active."""
+    data = bytearray(36)
+    for letter, slot in letters_and_slots:
+        data[slot] = ord(letter)
+    return bytes(data)
+
+
+def _make_output_name_response(name: str) -> bytes:
+    """Build a 32-byte UitgangVars response with the given output name."""
+    data = bytearray(32)
+    encoded = name.encode("ascii")
+    data[:len(encoded)] = encoded
+    return bytes(data)
+
+
+def _make_unconfigured_output_response() -> bytes:
+    """Build a 32-byte response for an unconfigured output (byte 1 = 0xFF)."""
+    data = bytearray(32)
+    data[1] = 0xFF
+    return bytes(data)
+
+
+@pytest.fixture
+def mock_coordinator_tcp():
+    """Patch Max200TcpClient in the coordinator to prevent real sockets."""
+    with patch(
+        "custom_components.dobiss_sx_evolution.coordinator.Max200TcpClient",
+    ):
+        yield
+
+
+async def _setup_entry_with_max200(
+    hass: HomeAssistant,
+    mock_controller,
+    subentries_data: list[dict] | None = None,
+) -> MockConfigEntry:
+    """Create a config entry with max200_host set."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            "connection_type": CONNECTION_TYPE_SOCKETCAND,
+            **MOCK_CONFIG_WITH_MAX200,
+        },
+        unique_id=f"{CONNECTION_TYPE_SOCKETCAND}:{MOCK_CONFIG['host']}:{MOCK_CONFIG['port']}/{MOCK_CONFIG['interface']}",
+        version=1,
+        subentries_data=subentries_data or [],
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    return entry
+
+
+async def test_import_subentry_type_hidden_without_max200(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """module_import is not offered when max200_host is not configured."""
+    entry = await _setup_loaded_entry(hass, mock_controller)
+    types = DobissConfigFlow.async_get_supported_subentry_types(entry)
+    assert SUBENTRY_TYPE_MODULE_IMPORT not in types
+    assert SUBENTRY_TYPE_MODULE in types
+
+
+async def test_import_subentry_type_shown_with_max200(
+    hass: HomeAssistant, mock_controller, mock_coordinator_tcp
+) -> None:
+    """module_import is offered when max200_host is configured."""
+    entry = await _setup_entry_with_max200(hass, mock_controller)
+    types = DobissConfigFlow.async_get_supported_subentry_types(entry)
+    assert SUBENTRY_TYPE_MODULE_IMPORT in types
+
+
+async def test_import_creates_subentries(
+    hass: HomeAssistant, mock_controller, mock_coordinator_tcp
+) -> None:
+    """Import downloads config and creates module subentries with output names."""
+    entry = await _setup_entry_with_max200(hass, mock_controller)
+
+    config_resp = _make_config_response(("A", 0), ("B", 1))
+
+    output_responses = {}
+    for mod_idx in (0, 1):
+        for out_idx in range(12):
+            output_responses[(mod_idx, out_idx)] = _make_unconfigured_output_response()
+    output_responses[(0, 0)] = _make_output_name_response("Kitchen")
+    output_responses[(0, 2)] = _make_output_name_response("Living")
+    output_responses[(1, 0)] = _make_output_name_response("Bedroom")
+
+    call_count = 0
+
+    async def mock_send_and_receive(intro, response_size):
+        nonlocal call_count
+        if call_count == 0:
+            call_count += 1
+            return config_resp
+        call_count += 1
+        mod_idx = None
+        out_idx = None
+        for m in range(18):
+            for o in range(12):
+                addr = 128 + m * 384 + o * 32
+                if intro[4] == addr >> 8 and intro[5] == addr & 0xFF:
+                    mod_idx = m
+                    out_idx = o
+                    break
+            if mod_idx is not None:
+                break
+        if mod_idx is not None and (mod_idx, out_idx) in output_responses:
+            return output_responses[(mod_idx, out_idx)]
+        return _make_unconfigured_output_response()
+
+    with patch(
+        "custom_components.dobiss_sx_evolution.config_flow.Max200TcpClient"
+    ) as mock_client_cls:
+        mock_client = mock_client_cls.return_value
+        mock_client.send_and_receive = mock_send_and_receive
+
+        result = await hass.config_entries.subentries.async_init(
+            (entry.entry_id, SUBENTRY_TYPE_MODULE_IMPORT),
+            context={"source": "user"},
+        )
+
+    assert result["type"] == FlowResultType.ABORT
+    assert result["reason"] == "import_successful"
+    assert result["description_placeholders"]["count"] == "2"
+
+    module_subentries = {
+        sub.data[CONF_MODULE]: sub
+        for sub in entry.subentries.values()
+        if sub.subentry_type == SUBENTRY_TYPE_MODULE
+    }
+    assert "A" in module_subentries
+    assert "B" in module_subentries
+
+    a_outputs = module_subentries["A"].data["outputs"]
+    assert "1" in a_outputs
+    assert a_outputs["1"]["name"] == "Kitchen"
+    assert a_outputs["1"]["type"] == "light"
+    assert "3" in a_outputs
+    assert a_outputs["3"]["name"] == "Living"
+
+    b_outputs = module_subentries["B"].data["outputs"]
+    assert "1" in b_outputs
+    assert b_outputs["1"]["name"] == "Bedroom"
+
+
+async def test_import_skips_existing_modules(
+    hass: HomeAssistant, mock_controller, mock_coordinator_tcp
+) -> None:
+    """Modules that already have a subentry are skipped."""
+    entry = await _setup_entry_with_max200(
+        hass,
+        mock_controller,
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_MODULE,
+                "title": "Module A",
+                "unique_id": "module:A",
+                "data": {"module": "A", "dimmable": False, "outputs": {}},
+            }
+        ],
+    )
+
+    config_resp = _make_config_response(("A", 0), ("B", 1))
+
+    async def mock_send_and_receive(intro, response_size):
+        if intro[1] == 0x61:
+            return config_resp
+        return _make_unconfigured_output_response()
+
+    with patch(
+        "custom_components.dobiss_sx_evolution.config_flow.Max200TcpClient"
+    ) as mock_client_cls:
+        mock_client = mock_client_cls.return_value
+        mock_client.send_and_receive = mock_send_and_receive
+
+        result = await hass.config_entries.subentries.async_init(
+            (entry.entry_id, SUBENTRY_TYPE_MODULE_IMPORT),
+            context={"source": "user"},
+        )
+
+    assert result["type"] == FlowResultType.ABORT
+    assert result["reason"] == "import_successful"
+    assert result["description_placeholders"]["count"] == "1"
+
+    module_letters = {
+        sub.data[CONF_MODULE]
+        for sub in entry.subentries.values()
+        if sub.subentry_type == SUBENTRY_TYPE_MODULE
+    }
+    assert module_letters == {"A", "B"}
+
+
+async def test_import_no_new_modules(
+    hass: HomeAssistant, mock_controller, mock_coordinator_tcp
+) -> None:
+    """When all modules already exist, abort with no_new_modules."""
+    entry = await _setup_entry_with_max200(
+        hass,
+        mock_controller,
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_MODULE,
+                "title": "Module A",
+                "unique_id": "module:A",
+                "data": {"module": "A", "dimmable": False, "outputs": {}},
+            }
+        ],
+    )
+
+    config_resp = _make_config_response(("A", 0))
+
+    with patch(
+        "custom_components.dobiss_sx_evolution.config_flow.Max200TcpClient"
+    ) as mock_client_cls:
+        mock_client = mock_client_cls.return_value
+        mock_client.send_and_receive = AsyncMock(return_value=config_resp)
+
+        result = await hass.config_entries.subentries.async_init(
+            (entry.entry_id, SUBENTRY_TYPE_MODULE_IMPORT),
+            context={"source": "user"},
+        )
+
+    assert result["type"] == FlowResultType.ABORT
+    assert result["reason"] == "no_new_modules"
+
+
+async def test_import_tcp_failure(
+    hass: HomeAssistant, mock_controller, mock_coordinator_tcp
+) -> None:
+    """TCP connection failure aborts with import_failed."""
+    entry = await _setup_entry_with_max200(hass, mock_controller)
+
+    with patch(
+        "custom_components.dobiss_sx_evolution.config_flow.Max200TcpClient"
+    ) as mock_client_cls:
+        mock_client = mock_client_cls.return_value
+        mock_client.send_and_receive = AsyncMock(
+            side_effect=OSError("Connection refused")
+        )
+
+        result = await hass.config_entries.subentries.async_init(
+            (entry.entry_id, SUBENTRY_TYPE_MODULE_IMPORT),
+            context={"source": "user"},
+        )
+
+    assert result["type"] == FlowResultType.ABORT
+    assert result["reason"] == "import_failed"

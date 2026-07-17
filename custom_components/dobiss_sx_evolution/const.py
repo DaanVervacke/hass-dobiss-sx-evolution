@@ -17,6 +17,7 @@ CONF_PORT: Final = "port"
 
 # USB connection constants
 CONF_DEVICE: Final = "device"
+CONF_MAX200_HOST: Final = "max200_host"
 
 # Subentry field constants
 CONF_MODULE: Final = "module"
@@ -24,6 +25,7 @@ CONF_NAME: Final = "name"
 
 # Subentry type identifiers
 SUBENTRY_TYPE_MODULE: Final = "module"
+SUBENTRY_TYPE_MODULE_IMPORT: Final = "module_import"
 
 DEFAULT_INTERFACE: Final = "can0"
 DEFAULT_PORT: Final = 29536
@@ -49,3 +51,6 @@ LIVENESS_TIMEOUT_S: Final = 300.0
 MAX_CAN_BRIGHTNESS_TX: Final = 144
 MAX_CAN_BRIGHTNESS_RX: Final = 90
 BRIGHTNESS_STEP: Final = 16
+
+MAX200_TCP_PORT: Final = 1001
+CLOCK_SYNC_INTERVAL_HOURS: Final = 4

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from types import MappingProxyType
 from typing import Any
 
 import serial.tools.list_ports
@@ -11,6 +12,7 @@ from homeassistant.config_entries import (
     ConfigEntry,
     ConfigFlow,
     ConfigFlowResult,
+    ConfigSubentry,
     ConfigSubentryFlow,
     SubentryFlowResult,
 )
@@ -28,6 +30,7 @@ from .const import (
     CONF_DEVICE,
     CONF_HOST,
     CONF_INTERFACE,
+    CONF_MAX200_HOST,
     CONF_MODULE,
     CONF_NAME,
     CONF_PORT,
@@ -37,8 +40,19 @@ from .const import (
     DEFAULT_PORT,
     DOMAIN,
     SUBENTRY_TYPE_MODULE,
+    SUBENTRY_TYPE_MODULE_IMPORT,
 )
 from .controller import ConnectionConfig, SocketcandConnection, UsbConnection
+from .protocol import (
+    _OUTPUTS_PER_MODULE,
+    CONFIG_RESPONSE_SIZE,
+    OUTPUT_NAME_RESPONSE_SIZE,
+    build_config_download_intro,
+    build_output_name_intro,
+    parse_config_response,
+    parse_output_name,
+)
+from .tcp_client import Max200TcpClient
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -49,6 +63,7 @@ CONNECTION_SCHEMA = vol.Schema(
             int, vol.Range(min=1, max=65535)
         ),
         vol.Required(CONF_INTERFACE, default=DEFAULT_INTERFACE): str,
+        vol.Optional(CONF_MAX200_HOST, default=""): str,
     }
 )
 
@@ -177,14 +192,17 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
             if error:
                 errors["base"] = error
             else:
+                data = {
+                    CONF_CONNECTION_TYPE: CONNECTION_TYPE_SOCKETCAND,
+                    CONF_HOST: user_input[CONF_HOST],
+                    CONF_PORT: user_input[CONF_PORT],
+                    CONF_INTERFACE: user_input[CONF_INTERFACE],
+                }
+                if max200 := user_input.get(CONF_MAX200_HOST, "").strip():
+                    data[CONF_MAX200_HOST] = max200
                 return self.async_create_entry(
                     title=f"Max200 ({conn.description})",
-                    data={
-                        CONF_CONNECTION_TYPE: CONNECTION_TYPE_SOCKETCAND,
-                        CONF_HOST: user_input[CONF_HOST],
-                        CONF_PORT: user_input[CONF_PORT],
-                        CONF_INTERFACE: user_input[CONF_INTERFACE],
-                    },
+                    data=data,
                 )
 
         return self.async_show_form(
@@ -214,12 +232,15 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
             if error:
                 errors["base"] = error
             else:
+                data = {
+                    CONF_CONNECTION_TYPE: CONNECTION_TYPE_USB,
+                    CONF_DEVICE: user_input[CONF_DEVICE],
+                }
+                if max200 := user_input.get(CONF_MAX200_HOST, "").strip():
+                    data[CONF_MAX200_HOST] = max200
                 return self.async_create_entry(
                     title=f"Max200 ({conn.description})",
-                    data={
-                        CONF_CONNECTION_TYPE: CONNECTION_TYPE_USB,
-                        CONF_DEVICE: user_input[CONF_DEVICE],
-                    },
+                    data=data,
                 )
 
         # Build dynamic schema with available ports, pre-selecting the
@@ -238,6 +259,7 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
                         mode=SelectSelectorMode.DROPDOWN,
                     )
                 ),
+                vol.Optional(CONF_MAX200_HOST, default=""): str,
             }
         )
 
@@ -256,6 +278,7 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
                 CONF_HOST: entry_data.get(CONF_HOST, ""),
                 CONF_PORT: entry_data.get(CONF_PORT, DEFAULT_PORT),
                 CONF_INTERFACE: entry_data.get(CONF_INTERFACE, DEFAULT_INTERFACE),
+                CONF_MAX200_HOST: entry_data.get(CONF_MAX200_HOST, ""),
             }
             return await self.async_step_reauth_socketcand()
         else:
@@ -283,6 +306,10 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
                     CONF_PORT: user_input[CONF_PORT],
                     CONF_INTERFACE: user_input[CONF_INTERFACE],
                 }
+                if max200 := user_input.get(CONF_MAX200_HOST, "").strip():
+                    new_data[CONF_MAX200_HOST] = max200
+                else:
+                    new_data.pop(CONF_MAX200_HOST, None)
                 return self.async_update_reload_and_abort(
                     entry,
                     data=new_data,
@@ -296,6 +323,7 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
                 CONF_HOST: entry.data.get(CONF_HOST, ""),
                 CONF_PORT: entry.data.get(CONF_PORT, DEFAULT_PORT),
                 CONF_INTERFACE: entry.data.get(CONF_INTERFACE, DEFAULT_INTERFACE),
+                CONF_MAX200_HOST: entry.data.get(CONF_MAX200_HOST, ""),
             }
         )
         schema = vol.Schema(
@@ -307,6 +335,10 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
                 vol.Required(
                     CONF_INTERFACE,
                     default=defaults.get(CONF_INTERFACE, DEFAULT_INTERFACE),
+                ): str,
+                vol.Optional(
+                    CONF_MAX200_HOST,
+                    default=defaults.get(CONF_MAX200_HOST, ""),
                 ): str,
             }
         )
@@ -332,6 +364,10 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
                     **entry.data,
                     CONF_DEVICE: user_input[CONF_DEVICE],
                 }
+                if max200 := user_input.get(CONF_MAX200_HOST, "").strip():
+                    new_data[CONF_MAX200_HOST] = max200
+                else:
+                    new_data.pop(CONF_MAX200_HOST, None)
                 return self.async_update_reload_and_abort(
                     entry,
                     data=new_data,
@@ -340,6 +376,7 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
 
         defaults = {
             CONF_DEVICE: entry.data.get(CONF_DEVICE, ""),
+            CONF_MAX200_HOST: entry.data.get(CONF_MAX200_HOST, ""),
         }
 
         # Build dynamic schema with available ports
@@ -353,6 +390,10 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
                         mode=SelectSelectorMode.DROPDOWN,
                     )
                 ),
+                vol.Optional(
+                    CONF_MAX200_HOST,
+                    default=defaults.get(CONF_MAX200_HOST, ""),
+                ): str,
             }
         )
         return self.async_show_form(
@@ -393,15 +434,18 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
             if error:
                 errors["base"] = error
             else:
+                data = {
+                    CONF_CONNECTION_TYPE: CONNECTION_TYPE_SOCKETCAND,
+                    CONF_HOST: user_input[CONF_HOST],
+                    CONF_PORT: user_input[CONF_PORT],
+                    CONF_INTERFACE: user_input[CONF_INTERFACE],
+                }
+                if max200 := user_input.get(CONF_MAX200_HOST, "").strip():
+                    data[CONF_MAX200_HOST] = max200
                 return self.async_update_reload_and_abort(
                     entry,
                     unique_id=f"{CONNECTION_TYPE_SOCKETCAND}:{user_input[CONF_HOST]}:{user_input[CONF_PORT]}/{user_input[CONF_INTERFACE]}",
-                    data={
-                        CONF_CONNECTION_TYPE: CONNECTION_TYPE_SOCKETCAND,
-                        CONF_HOST: user_input[CONF_HOST],
-                        CONF_PORT: user_input[CONF_PORT],
-                        CONF_INTERFACE: user_input[CONF_INTERFACE],
-                    },
+                    data=data,
                     reason="reconfigure_successful",
                 )
 
@@ -409,6 +453,7 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
             CONF_HOST: entry.data.get(CONF_HOST, ""),
             CONF_PORT: entry.data.get(CONF_PORT, DEFAULT_PORT),
             CONF_INTERFACE: entry.data.get(CONF_INTERFACE, DEFAULT_INTERFACE),
+            CONF_MAX200_HOST: entry.data.get(CONF_MAX200_HOST, ""),
         }
         schema = vol.Schema(
             {
@@ -417,6 +462,9 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
                     int, vol.Range(min=1, max=65535)
                 ),
                 vol.Required(CONF_INTERFACE, default=defaults[CONF_INTERFACE]): str,
+                vol.Optional(
+                    CONF_MAX200_HOST, default=defaults[CONF_MAX200_HOST]
+                ): str,
             }
         )
         return self.async_show_form(
@@ -437,18 +485,22 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
             if error:
                 errors["base"] = error
             else:
+                data = {
+                    CONF_CONNECTION_TYPE: CONNECTION_TYPE_USB,
+                    CONF_DEVICE: user_input[CONF_DEVICE],
+                }
+                if max200 := user_input.get(CONF_MAX200_HOST, "").strip():
+                    data[CONF_MAX200_HOST] = max200
                 return self.async_update_reload_and_abort(
                     entry,
                     unique_id=f"{CONNECTION_TYPE_USB}:{user_input[CONF_DEVICE]}",
-                    data={
-                        CONF_CONNECTION_TYPE: CONNECTION_TYPE_USB,
-                        CONF_DEVICE: user_input[CONF_DEVICE],
-                    },
+                    data=data,
                     reason="reconfigure_successful",
                 )
 
         defaults = {
             CONF_DEVICE: entry.data.get(CONF_DEVICE, ""),
+            CONF_MAX200_HOST: entry.data.get(CONF_MAX200_HOST, ""),
         }
         schema = vol.Schema(
             {
@@ -460,6 +512,9 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
                         mode=SelectSelectorMode.DROPDOWN,
                     )
                 ),
+                vol.Optional(
+                    CONF_MAX200_HOST, default=defaults[CONF_MAX200_HOST]
+                ): str,
             }
         )
         return self.async_show_form(
@@ -472,9 +527,12 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
         cls, config_entry: ConfigEntry
     ) -> dict[str, type[ConfigSubentryFlow]]:
         """Return subentry types supported by this integration."""
-        return {
+        types: dict[str, type[ConfigSubentryFlow]] = {
             SUBENTRY_TYPE_MODULE: ModuleSubentryFlowHandler,
         }
+        if config_entry.data.get(CONF_MAX200_HOST):
+            types[SUBENTRY_TYPE_MODULE_IMPORT] = ModuleImportSubentryFlowHandler
+        return types
 
 
 class ModuleSubentryFlowHandler(ConfigSubentryFlow):
@@ -804,4 +862,81 @@ class ModuleSubentryFlowHandler(ConfigSubentryFlow):
         )
         return self.async_show_form(
             step_id="edit_module", data_schema=schema, errors=errors
+        )
+
+
+class ModuleImportSubentryFlowHandler(ConfigSubentryFlow):
+    """Handle the "Import modules from Max200" subentry flow."""
+
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Download module config from Max200 and create subentries."""
+        entry = self._get_entry()
+        max200_host = entry.data.get(CONF_MAX200_HOST)
+        if not max200_host:
+            return self.async_abort(reason="no_max200_host")
+
+        existing_letters = {
+            sub.data[CONF_MODULE]
+            for sub in entry.subentries.values()
+            if sub.subentry_type == SUBENTRY_TYPE_MODULE
+        }
+
+        client = Max200TcpClient(max200_host)
+
+        try:
+            config_data = await client.send_and_receive(
+                build_config_download_intro(),
+                response_size=CONFIG_RESPONSE_SIZE,
+            )
+        except (TimeoutError, OSError) as err:
+            _LOGGER.warning("Failed to download config from Max200: %s", err)
+            return self.async_abort(reason="import_failed")
+
+        modules = parse_config_response(config_data)
+        new_modules = [(letter, idx) for letter, idx in modules
+                       if letter not in existing_letters]
+
+        if not new_modules:
+            return self.async_abort(reason="no_new_modules")
+
+        imported = 0
+        for letter, module_index in new_modules:
+            outputs: dict[str, dict[str, str]] = {}
+            for output_index in range(_OUTPUTS_PER_MODULE):
+                try:
+                    name_data = await client.send_and_receive(
+                        build_output_name_intro(module_index, output_index),
+                        response_size=OUTPUT_NAME_RESPONSE_SIZE,
+                    )
+                except (TimeoutError, OSError) as err:
+                    _LOGGER.debug(
+                        "Failed to fetch output %d for module %s: %s",
+                        output_index + 1, letter, err,
+                    )
+                    continue
+                name = parse_output_name(name_data)
+                if name is not None:
+                    outputs[str(output_index + 1)] = {
+                        "type": "light",
+                        "name": name,
+                    }
+
+            subentry = ConfigSubentry(
+                data=MappingProxyType({
+                    CONF_MODULE: letter,
+                    "dimmable": False,
+                    "outputs": outputs,
+                }),
+                subentry_type=SUBENTRY_TYPE_MODULE,
+                title=f"Module {letter}",
+                unique_id=f"module:{letter}",
+            )
+            if self.hass.config_entries.async_add_subentry(entry, subentry):
+                imported += 1
+
+        return self.async_abort(
+            reason="import_successful",
+            description_placeholders={"count": str(imported)},
         )

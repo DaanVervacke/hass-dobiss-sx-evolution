@@ -2,13 +2,21 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from custom_components.dobiss_sx_evolution.protocol import (
     DUMP_REQUEST_FRAME,
     StateUpdate,
+    build_clock_set_packets,
+    build_config_download_intro,
+    build_output_name_intro,
     build_state_frame,
     can_to_ha_brightness,
     ha_to_can_brightness,
+    parse_config_response,
+    parse_output_name,
     parse_state_frame,
+    to_bcd,
 )
 
 # ---------------------------------------------------------------------------
@@ -246,3 +254,169 @@ def test_ha_to_can_brightness_positive_never_zero():
     for ha in range(1, 256):
         result = ha_to_can_brightness(ha)
         assert result >= 16, f"ha={ha} gave {result}, expected >= 16"
+
+
+# ---------------------------------------------------------------------------
+# to_bcd
+# ---------------------------------------------------------------------------
+
+
+def test_to_bcd_basic_values():
+    """to_bcd matches the ConversieVars lookup table from MaxTool."""
+    assert to_bcd(0) == 0x00
+    assert to_bcd(9) == 0x09
+    assert to_bcd(10) == 0x10
+    assert to_bcd(11) == 0x11
+    assert to_bcd(59) == 0x59
+    assert to_bcd(99) == 0x99
+
+
+def test_to_bcd_matches_inline_expression():
+    """to_bcd(n) must equal the original inline (n // 10) * 16 + (n % 10)."""
+    for n in range(100):
+        assert to_bcd(n) == (n // 10) * 16 + (n % 10)
+
+
+# ---------------------------------------------------------------------------
+# build_clock_set_packets
+# ---------------------------------------------------------------------------
+
+
+def test_build_clock_set_packets_sizes():
+    """Intro is 16 bytes, output is 7 bytes."""
+    dt = datetime(2026, 7, 17, 14, 30, 45)
+    intro, output = build_clock_set_packets(dt)
+    assert len(intro) == 16
+    assert len(output) == 7
+
+
+def test_build_clock_set_packets_intro_header():
+    """Intro starts with 0xED, 0x4B ('K'), 0x30 ('0')."""
+    dt = datetime(2026, 1, 1, 0, 0, 0)
+    intro, _ = build_clock_set_packets(dt)
+    assert intro[0] == 0xED
+    assert intro[1] == 0x4B
+    assert intro[2] == 0x30
+
+
+def test_build_clock_set_packets_bcd_values():
+    """Output bytes are BCD-encoded date/time fields."""
+    dt = datetime(2026, 7, 17, 14, 30, 45)
+    _, output = build_clock_set_packets(dt)
+    assert output[0] == to_bcd(45)  # second
+    assert output[1] == to_bcd(30)  # minute
+    assert output[2] == to_bcd(14)  # hour
+    assert output[3] == to_bcd(dt.isoweekday())  # dow (Friday = 5)
+    assert output[4] == to_bcd(17)  # day
+    assert output[5] == to_bcd(7)   # month
+    assert output[6] == to_bcd(26)  # year % 100
+
+
+# ---------------------------------------------------------------------------
+# build_config_download_intro
+# ---------------------------------------------------------------------------
+
+
+def test_build_config_download_intro_structure():
+    """Intro is 16 bytes: 0xED, 'a', '0', 0xA0, rest zero."""
+    intro = build_config_download_intro()
+    assert len(intro) == 16
+    assert intro[0] == 0xED
+    assert intro[1] == 0x61
+    assert intro[2] == 0x30
+    assert intro[3] == 0xA0
+    assert intro[4:] == bytes(12)
+
+
+# ---------------------------------------------------------------------------
+# parse_config_response
+# ---------------------------------------------------------------------------
+
+
+def test_parse_config_response_active_modules():
+    """Active module slots with ASCII letters are returned."""
+    data = bytearray(36)
+    data[0] = ord("A")
+    data[2] = ord("C")
+    result = parse_config_response(bytes(data))
+    assert result == [("A", 0), ("C", 2)]
+
+
+def test_parse_config_response_skips_zero_slots():
+    """Zero-filled slots are not returned."""
+    data = bytes(36)
+    assert parse_config_response(data) == []
+
+
+def test_parse_config_response_skips_non_alpha():
+    """Non-alpha bytes (digits, control chars) are skipped."""
+    data = bytearray(36)
+    data[0] = 0xFF
+    data[1] = ord("3")
+    data[2] = 0x01
+    assert parse_config_response(bytes(data)) == []
+
+
+def test_parse_config_response_lowercase_uppercased():
+    """Lowercase letters are uppercased."""
+    data = bytearray(36)
+    data[5] = ord("b")
+    result = parse_config_response(bytes(data))
+    assert result == [("B", 5)]
+
+
+# ---------------------------------------------------------------------------
+# build_output_name_intro
+# ---------------------------------------------------------------------------
+
+
+def test_build_output_name_intro_structure():
+    """Intro has correct header and EEPROM address."""
+    intro = build_output_name_intro(0, 0)
+    assert len(intro) == 16
+    assert intro[0] == 0xED
+    assert intro[1] == 0x75
+    assert intro[2] == 0x31
+    assert intro[3] == 0xA0
+    # addr = 128 + 0*384 + 0*32 = 128 = 0x0080
+    assert intro[4] == 0x00
+    assert intro[5] == 0x80
+
+
+def test_build_output_name_intro_address_calculation():
+    """Address = 128 + module_index*384 + output_index*32."""
+    intro = build_output_name_intro(2, 5)
+    addr = 128 + 2 * 384 + 5 * 32
+    assert intro[4] == addr >> 8
+    assert intro[5] == addr & 0xFF
+
+
+# ---------------------------------------------------------------------------
+# parse_output_name
+# ---------------------------------------------------------------------------
+
+
+def test_parse_output_name_valid():
+    """A configured output returns its trimmed name."""
+    data = bytearray(32)
+    name = b"Kitchen ceiling"
+    data[:len(name)] = name
+    assert parse_output_name(bytes(data)) == "Kitchen ceiling"
+
+
+def test_parse_output_name_unconfigured():
+    """Byte 1 == 0xFF means unconfigured, returns None."""
+    data = bytearray(32)
+    data[1] = 0xFF
+    assert parse_output_name(bytes(data)) is None
+
+
+def test_parse_output_name_too_short():
+    """Data shorter than 32 bytes returns None."""
+    assert parse_output_name(b"\x00" * 10) is None
+
+
+def test_parse_output_name_empty_name():
+    """All-zero name (after stripping) returns None."""
+    data = bytes(32)
+    assert parse_output_name(data) is None

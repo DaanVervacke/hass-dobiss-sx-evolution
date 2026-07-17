@@ -9,16 +9,19 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from datetime import datetime, timedelta
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryNotReady
-from homeassistant.helpers.event import async_call_later
+from homeassistant.helpers.event import async_call_later, async_track_time_interval
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
+    CLOCK_SYNC_INTERVAL_HOURS,
     CONF_CONNECTION_TYPE,
+    CONF_MAX200_HOST,
     CONF_MODULE,
     CONNECTION_TYPE_SOCKETCAND,
     DOMAIN,
@@ -32,6 +35,8 @@ from .controller import (
     SocketcandConnection,
     UsbConnection,
 )
+from .protocol import build_clock_set_packets
+from .tcp_client import Max200TcpClient
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -116,6 +121,11 @@ class DobissCoordinator(DataUpdateCoordinator[dict[OutputKey, int]]):
             entry_id=entry.entry_id,
         )
 
+        max200_host = entry.data.get(CONF_MAX200_HOST)
+        self.tcp_client: Max200TcpClient | None = (
+            Max200TcpClient(max200_host) if max200_host else None
+        )
+
         self._debounce_unsub: Callable[[], None] | None = None
 
     async def _async_setup(self) -> None:
@@ -132,6 +142,16 @@ class DobissCoordinator(DataUpdateCoordinator[dict[OutputKey, int]]):
         self.config_entry.async_on_unload(
             self.controller.async_add_listener(self._on_controller_update)
         )
+
+        if self.tcp_client is not None:
+            await self._sync_clock()
+            self.config_entry.async_on_unload(
+                async_track_time_interval(
+                    self.hass,
+                    self._sync_clock,
+                    timedelta(hours=CLOCK_SYNC_INTERVAL_HOURS),
+                )
+            )
 
     async def _async_update_data(self) -> dict[OutputKey, int]:
         """Return the current cached state (no polling).
@@ -156,6 +176,16 @@ class DobissCoordinator(DataUpdateCoordinator[dict[OutputKey, int]]):
         """Push the current state snapshot to all entity listeners."""
         self._debounce_unsub = None
         self.async_set_updated_data(dict(self.controller.states))
+
+    async def _sync_clock(self, _now: Any = None) -> None:
+        """Send current time to the Max200 over TCP."""
+        if self.tcp_client is None:
+            return
+        intro, output = build_clock_set_packets(datetime.now())
+        try:
+            await self.tcp_client.send_command(intro, output)
+        except Exception:  # noqa: BLE001
+            _LOGGER.warning("Clock sync to Max200 failed", exc_info=True)
 
     async def async_shutdown(self) -> None:
         """Tear down the controller, then the coordinator."""

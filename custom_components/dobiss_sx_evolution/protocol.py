@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 
 from .const import (
     BRIGHTNESS_STEP,
@@ -19,6 +20,33 @@ class StateUpdate:
     module: str
     output: int  # 1-indexed
     state: int  # 0 = off; 1..MAX_CAN_BRIGHTNESS_RX for dimmable echo
+
+
+def to_bcd(value: int) -> int:
+    """Encode a decimal value as BCD (ConversieVars.To from MaxTool)."""
+    return (value // 10) * 16 + (value % 10)
+
+
+def build_clock_set_packets(dt: datetime) -> tuple[bytes, bytes]:
+    """Return (intro, output) for a K0 clock-set command.
+
+    Field order TBD from live testing. Starting with standard RTC order.
+    """
+    intro = bytearray(16)
+    intro[0] = 0xED
+    intro[1] = 0x4B  # 'K'
+    intro[2] = 0x30  # '0'
+
+    output = bytes([
+        to_bcd(dt.second),
+        to_bcd(dt.minute),
+        to_bcd(dt.hour),
+        to_bcd(dt.isoweekday()),
+        to_bcd(dt.day),
+        to_bcd(dt.month),
+        to_bcd(dt.year % 100),
+    ])
+    return bytes(intro), output
 
 
 def parse_state_frame(data: bytes) -> StateUpdate | None:
@@ -57,13 +85,75 @@ def build_state_frame(module: str, output: int, state: int) -> tuple[int, bytes]
     except UnicodeEncodeError:
         return None
     zero = output - 1
-    output_byte = (zero // 10) * 16 + (zero % 10)
+    output_byte = to_bcd(zero)
     if not 0 <= state <= 255:
         return None
     return CAN_ID_TX_STATE, bytes([0x00, module_byte, output_byte, state])
 
 
 DUMP_REQUEST_FRAME: tuple[int, bytes] = (CAN_ID_STATE_DUMP, b"")
+
+CONFIG_RESPONSE_SIZE = 36
+OUTPUT_NAME_RESPONSE_SIZE = 32
+_MODULES_PER_CONTROLLER = 18
+_OUTPUTS_PER_MODULE = 12
+
+
+def build_config_download_intro() -> bytes:
+    """Build the 16-byte intro for a ConfigVars (a0) download request."""
+    intro = bytearray(16)
+    intro[0] = 0xED
+    intro[1] = 0x61  # 'a'
+    intro[2] = 0x30  # '0'
+    intro[3] = 0xA0
+    return bytes(intro)
+
+
+def parse_config_response(data: bytes) -> list[tuple[str, int]]:
+    """Parse a 36-byte ConfigVars response into active modules.
+
+    Returns a list of (module_letter, module_index) for slots that contain
+    a valid ASCII letter.  module_index is the slot position (0-17), needed
+    for EEPROM address calculation when fetching output names.
+    """
+    result: list[tuple[str, int]] = []
+    for i in range(_MODULES_PER_CONTROLLER):
+        char = data[i]
+        if char == 0:
+            continue
+        try:
+            letter = bytes([char]).decode("ascii")
+        except UnicodeDecodeError:
+            continue
+        if letter.isalpha():
+            result.append((letter.upper(), i))
+    return result
+
+
+def build_output_name_intro(module_index: int, output_index: int) -> bytes:
+    """Build the 16-byte intro for a UitgangVars (u1) download request."""
+    addr = 128 + module_index * 384 + output_index * 32
+    intro = bytearray(16)
+    intro[0] = 0xED
+    intro[1] = 0x75  # 'u'
+    intro[2] = 0x31  # '1'
+    intro[3] = 0xA0
+    intro[4] = addr >> 8
+    intro[5] = addr & 0xFF
+    return bytes(intro)
+
+
+def parse_output_name(data: bytes) -> str | None:
+    """Parse a 32-byte UitgangVars response into an output name.
+
+    Returns None if the output is unconfigured (byte 1 == 0xFF).
+    """
+    if len(data) < OUTPUT_NAME_RESPONSE_SIZE:
+        return None
+    if data[1] == 0xFF:
+        return None
+    name = bytes(data[:31]).decode("ascii", errors="replace").strip("\x00").strip()
+    return name or None
 
 
 def can_to_ha_brightness(can_state: int) -> int:

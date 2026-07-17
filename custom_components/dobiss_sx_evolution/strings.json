@@ -11,12 +11,14 @@
         "data": {
           "host": "socketcand host",
           "port": "socketcand port",
-          "interface": "CAN interface"
+          "interface": "CAN interface",
+          "max200_host": "Max200 IP address"
         },
         "data_description": {
           "host": "Hostname or IP address of the machine running socketcand. For example: 192.168.1.10 or homeserver.local.",
           "port": "TCP port socketcand is listening on. The default for this integration is 29536.",
-          "interface": "Name of the CAN interface on the socketcand host. The default for this integration is can0."
+          "interface": "Name of the CAN interface on the socketcand host. The default for this integration is can0.",
+          "max200_host": "IP address of the Max200 controller. Optional, enables clock sync and configuration commands."
         }
       },
       "reauth_socketcand": {
@@ -25,32 +27,38 @@
         "data": {
           "host": "socketcand host",
           "port": "socketcand port",
-          "interface": "CAN interface"
+          "interface": "CAN interface",
+          "max200_host": "Max200 IP address"
         },
         "data_description": {
           "host": "Hostname or IP address of the machine running socketcand.",
           "port": "TCP port socketcand is listening on (default 29536).",
-          "interface": "Name of the CAN interface on the socketcand host (typically can0)."
+          "interface": "Name of the CAN interface on the socketcand host (typically can0).",
+          "max200_host": "IP address of the Max200 controller. Optional, enables clock sync and configuration commands."
         }
       },
       "reauth_usb": {
         "title": "Reconnect USB CAN adapter",
         "description": "Home Assistant lost the connection. Confirm or update the USB CAN adapter details below.",
         "data": {
-          "device": "Device path"
+          "device": "Device path",
+          "max200_host": "Max200 IP address"
         },
         "data_description": {
-          "device": "Path to the serial device."
+          "device": "Path to the serial device.",
+          "max200_host": "IP address of the Max200 controller. Optional, enables clock sync and configuration commands."
         }
       },
       "usb_manual": {
         "title": "Connect via USB CAN adapter",
         "description": "Connect directly to a USB CAN adapter like Canable, Lawicel, or other compatible devices.",
         "data": {
-          "device": "Device path"
+          "device": "Device path",
+          "max200_host": "Max200 IP address"
         },
         "data_description": {
-          "device": "Path to the serial device. On Linux: /dev/ttyACM0, /dev/ttyUSB0. On Windows: COM3, COM4, etc."
+          "device": "Path to the serial device. On Linux: /dev/ttyACM0, /dev/ttyUSB0. On Windows: COM3, COM4, etc.",
+          "max200_host": "IP address of the Max200 controller. Optional, enables clock sync and configuration commands."
         }
       },
       "reconfigure": {
@@ -69,22 +77,26 @@
         "data": {
           "host": "socketcand host",
           "port": "socketcand port",
-          "interface": "CAN interface"
+          "interface": "CAN interface",
+          "max200_host": "Max200 IP address"
         },
         "data_description": {
           "host": "Hostname or IP address of the machine running socketcand.",
           "port": "TCP port socketcand is listening on (default 29536).",
-          "interface": "Name of the CAN interface on the socketcand host (typically can0)."
+          "interface": "Name of the CAN interface on the socketcand host (typically can0).",
+          "max200_host": "IP address of the Max200 controller. Optional, enables clock sync and configuration commands."
         }
       },
       "reconfigure_usb": {
         "title": "Reconfigure USB connection",
         "description": "Update the USB CAN adapter connection details for the DOBISS SX Evolution CAN bus.",
         "data": {
-          "device": "Device path"
+          "device": "Device path",
+          "max200_host": "Max200 IP address"
         },
         "data_description": {
-          "device": "Path to the serial device."
+          "device": "Path to the serial device.",
+          "max200_host": "IP address of the Max200 controller. Optional, enables clock sync and configuration commands."
         }
       }
     },
@@ -104,6 +116,24 @@
     }
   },
   "config_subentries": {
+    "module_import": {
+      "entry_type": "Module import",
+      "initiate_flow": {
+        "user": "Import modules from Max200"
+      },
+      "step": {
+        "user": {
+          "title": "Import modules from Max200",
+          "description": "Download module configuration and output names from the Max200 controller. Modules that already exist will be skipped. All imported outputs default to type light on a non-dimmable module. You can adjust the type and dimmer setting afterwards."
+        }
+      },
+      "abort": {
+        "import_successful": "Imported {count} new module(s) from the Max200.",
+        "import_failed": "Could not connect to the Max200. Check the IP address and that the controller is powered on.",
+        "no_new_modules": "All modules from the Max200 are already configured.",
+        "no_max200_host": "No Max200 IP address configured. Add one in the connection settings first."
+      }
+    },
     "module": {
       "entry_type": "Module",
       "initiate_flow": {

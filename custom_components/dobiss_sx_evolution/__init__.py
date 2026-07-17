@@ -17,6 +17,7 @@ from .const import (
     CONF_DEVICE,
     CONF_HOST,
     CONF_INTERFACE,
+    CONF_MAX200_HOST,
     CONF_MODULE,
     CONF_PORT,
     DOMAIN,
@@ -105,7 +106,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: DobissConfigEntry) -> bo
     return True
 
 
-type _ConnectionKey = tuple[str | None, str | None, int | None, str | None, str | None]
+type _ConnectionKey = tuple[
+    str | None, str | None, int | None, str | None, str | None, str | None
+]
 
 
 def _connection_key(entry: DobissConfigEntry) -> _ConnectionKey:
@@ -116,6 +119,7 @@ def _connection_key(entry: DobissConfigEntry) -> _ConnectionKey:
         entry.data.get(CONF_PORT),
         entry.data.get(CONF_INTERFACE),
         entry.data.get(CONF_DEVICE),
+        entry.data.get(CONF_MAX200_HOST),
     )
 
 

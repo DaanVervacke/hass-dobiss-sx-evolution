@@ -33,3 +33,6 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM", "PLC", "PLE", "PLW", "RUF", "BLE
 
 [tool.mypy]
 python_version = "3.14"
+
+[dependency-groups]
+dev = []

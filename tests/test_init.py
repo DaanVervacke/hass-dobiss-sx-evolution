@@ -357,6 +357,15 @@ def test_connection_key_differs_on_host_change() -> None:
     assert _connection_key(e1) != _connection_key(e2)
 
 
+def test_connection_key_includes_max200_host() -> None:
+    """_connection_key includes max200_host so changes trigger reload."""
+    e1 = MockConfigEntry(domain=DOMAIN, data=_make_entry_data())
+    e2 = MockConfigEntry(
+        domain=DOMAIN, data=_make_entry_data(max200_host="10.0.0.5")
+    )
+    assert _connection_key(e1) != _connection_key(e2)
+
+
 def test_module_config_returns_pairs() -> None:
     """_module_config returns (letter, dimmable) pairs for each module."""
     entry = MockConfigEntry(
