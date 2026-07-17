@@ -134,6 +134,41 @@
         "no_max200_host": "No Max200 IP address configured. Add one in the connection settings first."
       }
     },
+    "mood": {
+      "entry_type": "Mood",
+      "initiate_flow": {
+        "user": "Add mood",
+        "reconfigure": "Reconfigure mood"
+      },
+      "step": {
+        "user": {
+          "title": "Add a DOBISS mood",
+          "description": "Enter the mood number as configured in MaxTool. You can find the number in the Sferen tab.",
+          "data": {
+            "mood_number": "Mood number",
+            "name": "Friendly name"
+          },
+          "data_description": {
+            "mood_number": "The mood number from MaxTool (0-99). Each number can only be used once.",
+            "name": "Optional. A descriptive name like \"All lights off\" or \"Coming home\"."
+          }
+        },
+        "reconfigure": {
+          "title": "Reconfigure mood",
+          "description": "Update the friendly name of this mood. The mood number cannot be changed after creation.",
+          "data": {
+            "name": "Friendly name"
+          },
+          "data_description": {
+            "name": "A descriptive name for this mood."
+          }
+        }
+      },
+      "error": {
+        "mood_number_out_of_range": "Mood number must be between 0 and 99.",
+        "mood_already_exists": "A mood with that number already exists."
+      }
+    },
     "module": {
       "entry_type": "Module",
       "initiate_flow": {

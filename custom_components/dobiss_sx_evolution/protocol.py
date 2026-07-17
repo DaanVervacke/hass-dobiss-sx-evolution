@@ -156,6 +156,20 @@ def parse_output_name(data: bytes) -> str | None:
     return name or None
 
 
+MOOD_ADDRESS_BYTE = 0x53
+
+
+def build_mood_frame(mood_number: int) -> tuple[int, bytes] | None:
+    """Build a (can_id, payload) tuple for a mood activation.
+
+    Address byte 0x53 ('S') routes to the mood subsystem. The mood number
+    and action are sent as raw bytes (special addresses skip BCD encoding).
+    """
+    if not 0 <= mood_number <= 99:
+        return None
+    return CAN_ID_TX_STATE, bytes([0x00, MOOD_ADDRESS_BYTE, mood_number, 0x01])
+
+
 def can_to_ha_brightness(can_state: int) -> int:
     """Convert CAN echo brightness (0-90) to HA brightness (0-255)."""
     return min(can_state * 255 // MAX_CAN_BRIGHTNESS_RX, 255)

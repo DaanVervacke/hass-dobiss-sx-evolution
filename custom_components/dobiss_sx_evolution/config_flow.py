@@ -41,6 +41,7 @@ from .const import (
     DOMAIN,
     SUBENTRY_TYPE_MODULE,
     SUBENTRY_TYPE_MODULE_IMPORT,
+    SUBENTRY_TYPE_MOOD,
 )
 from .controller import ConnectionConfig, SocketcandConnection, UsbConnection
 from .protocol import (
@@ -529,6 +530,7 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
         """Return subentry types supported by this integration."""
         types: dict[str, type[ConfigSubentryFlow]] = {
             SUBENTRY_TYPE_MODULE: ModuleSubentryFlowHandler,
+            SUBENTRY_TYPE_MOOD: MoodSubentryFlowHandler,
         }
         if config_entry.data.get(CONF_MAX200_HOST):
             types[SUBENTRY_TYPE_MODULE_IMPORT] = ModuleImportSubentryFlowHandler
@@ -939,4 +941,77 @@ class ModuleImportSubentryFlowHandler(ConfigSubentryFlow):
         return self.async_abort(
             reason="import_successful",
             description_placeholders={"count": str(imported)},
+        )
+
+
+CONF_MOOD_NUMBER = "mood_number"
+
+
+class MoodSubentryFlowHandler(ConfigSubentryFlow):
+    """Handle subentry flow for adding and reconfiguring a DOBISS mood."""
+
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Add a new mood subentry."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            mood_number: int = user_input[CONF_MOOD_NUMBER]
+            name: str = user_input.get(CONF_NAME, "").strip()
+
+            if not 0 <= mood_number <= 99:
+                errors[CONF_MOOD_NUMBER] = "mood_number_out_of_range"
+            else:
+                entry = self._get_entry()
+                existing_moods = {
+                    sub.data[CONF_MOOD_NUMBER]
+                    for sub in entry.subentries.values()
+                    if sub.subentry_type == SUBENTRY_TYPE_MOOD
+                }
+                if mood_number in existing_moods:
+                    errors[CONF_MOOD_NUMBER] = "mood_already_exists"
+                else:
+                    title = name or f"Mood {mood_number}"
+                    return self.async_create_entry(
+                        title=title,
+                        data={CONF_MOOD_NUMBER: mood_number},
+                        unique_id=f"mood:{mood_number}",
+                    )
+
+        defaults = user_input or {}
+        schema = vol.Schema(
+            {
+                vol.Required(
+                    CONF_MOOD_NUMBER, default=defaults.get(CONF_MOOD_NUMBER, 0)
+                ): vol.All(int, vol.Range(min=0, max=99)),
+                vol.Optional(CONF_NAME, default=defaults.get(CONF_NAME, "")): str,
+            }
+        )
+        return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Reconfigure a mood (rename only, mood number is immutable)."""
+        errors: dict[str, str] = {}
+        subentry = self._get_reconfigure_subentry()
+
+        if user_input is not None:
+            name: str = user_input.get(CONF_NAME, "").strip()
+            title = name or f"Mood {subentry.data[CONF_MOOD_NUMBER]}"
+            return self.async_update_and_abort(
+                self._get_entry(),
+                subentry,
+                data=dict(subentry.data),
+                title=title,
+            )
+
+        schema = vol.Schema(
+            {
+                vol.Optional(CONF_NAME, default=subentry.title): str,
+            }
+        )
+        return self.async_show_form(
+            step_id="reconfigure", data_schema=schema, errors=errors
         )

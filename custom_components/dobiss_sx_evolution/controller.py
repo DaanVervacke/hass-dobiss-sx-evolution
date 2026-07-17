@@ -30,6 +30,7 @@ from .const import (
 from .protocol import (
     DUMP_REQUEST_FRAME,
     StateUpdate,
+    build_mood_frame,
     build_state_frame,
     ha_to_can_brightness,
     parse_state_frame,
@@ -355,6 +356,13 @@ class DobissController:
         await self._send_state(shutter.module, shutter.up_output, 0)
         self._apply_local((shutter.module, shutter.up_output), 0)
         self._apply_local((shutter.module, shutter.down_output), 0)
+
+    async def async_activate_mood(self, mood_number: int) -> None:
+        """Send a mood activation frame. Fire-and-forget."""
+        frame = build_mood_frame(mood_number)
+        if frame is None:
+            raise RuntimeError(f"Invalid mood number {mood_number}")
+        await self._send_frame(*frame)
 
     async def async_request_dump(self) -> None:
         """Send a state-dump request to the bus (triggers a full status refresh)."""

@@ -6,9 +6,11 @@ from datetime import datetime
 
 from custom_components.dobiss_sx_evolution.protocol import (
     DUMP_REQUEST_FRAME,
+    MOOD_ADDRESS_BYTE,
     StateUpdate,
     build_clock_set_packets,
     build_config_download_intro,
+    build_mood_frame,
     build_output_name_intro,
     build_state_frame,
     can_to_ha_brightness,
@@ -420,3 +422,46 @@ def test_parse_output_name_empty_name():
     """All-zero name (after stripping) returns None."""
     data = bytes(32)
     assert parse_output_name(data) is None
+
+
+# ---------------------------------------------------------------------------
+# build_mood_frame
+# ---------------------------------------------------------------------------
+
+
+def test_build_mood_frame_basic():
+    """Correct CAN ID and payload for a mood activation."""
+    result = build_mood_frame(5)
+    assert result is not None
+    can_id, payload = result
+    assert can_id == 0x800102
+    assert len(payload) == 4
+    assert payload[0] == 0x00
+    assert payload[1] == MOOD_ADDRESS_BYTE
+    assert payload[2] == 5
+    assert payload[3] == 0x01
+
+
+def test_build_mood_frame_no_bcd():
+    """Mood number is sent as raw byte, not BCD encoded.
+
+    Address 0x53 is a special address that skips ConversieVars in the
+    MaxTool IL. mood_number=15 should stay 0x0F, not become 0x15 (BCD).
+    """
+    result = build_mood_frame(15)
+    assert result is not None
+    _, payload = result
+    assert payload[2] == 0x0F
+
+
+def test_build_mood_frame_boundary_values():
+    """Mood numbers 0 and 99 are both valid."""
+    assert build_mood_frame(0) is not None
+    assert build_mood_frame(99) is not None
+
+
+def test_build_mood_frame_out_of_range():
+    """Mood numbers outside 0-99 must return None."""
+    assert build_mood_frame(-1) is None
+    assert build_mood_frame(100) is None
+    assert build_mood_frame(255) is None

@@ -25,6 +25,7 @@ from custom_components.dobiss_sx_evolution.const import (
     DOMAIN,
     SUBENTRY_TYPE_MODULE,
     SUBENTRY_TYPE_MODULE_IMPORT,
+    SUBENTRY_TYPE_MOOD,
 )
 
 from .conftest import MOCK_CONFIG
@@ -1818,3 +1819,91 @@ async def test_import_tcp_failure(
 
     assert result["type"] == FlowResultType.ABORT
     assert result["reason"] == "import_failed"
+
+
+# ---------------------------------------------------------------------------
+# Mood subentry flow
+# ---------------------------------------------------------------------------
+
+
+async def test_mood_subentry_type_shown(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """Mood subentry type is always available (no Max200 required)."""
+    entry = await _setup_loaded_entry(hass, mock_controller)
+    types = DobissConfigFlow.async_get_supported_subentry_types(entry)
+    assert SUBENTRY_TYPE_MOOD in types
+
+
+async def test_add_mood_subentry(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """Adding a mood creates a subentry with the correct data."""
+    entry = await _setup_loaded_entry(hass, mock_controller)
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_MOOD),
+        context={"source": "user"},
+    )
+    assert result["type"] == FlowResultType.FORM
+
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        user_input={"mood_number": 5, "name": "Night Mode"},
+    )
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["title"] == "Night Mode"
+
+    mood_subs = [
+        sub for sub in entry.subentries.values()
+        if sub.subentry_type == SUBENTRY_TYPE_MOOD
+    ]
+    assert len(mood_subs) == 1
+    assert mood_subs[0].data["mood_number"] == 5
+
+
+async def test_add_mood_default_name(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """A mood without a name gets a default title."""
+    entry = await _setup_loaded_entry(hass, mock_controller)
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_MOOD),
+        context={"source": "user"},
+    )
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        user_input={"mood_number": 12, "name": ""},
+    )
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["title"] == "Mood 12"
+
+
+async def test_add_mood_duplicate(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """Adding a mood with an already-used number shows an error."""
+    entry = await _setup_loaded_entry(
+        hass,
+        mock_controller,
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_MOOD,
+                "title": "Existing",
+                "unique_id": "mood:3",
+                "data": {"mood_number": 3},
+            }
+        ],
+    )
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_MOOD),
+        context={"source": "user"},
+    )
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        user_input={"mood_number": 3, "name": "Duplicate"},
+    )
+    assert result["type"] == FlowResultType.FORM
+    assert result["errors"]["mood_number"] == "mood_already_exists"

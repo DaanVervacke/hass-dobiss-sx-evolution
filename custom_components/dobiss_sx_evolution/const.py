@@ -26,6 +26,7 @@ CONF_NAME: Final = "name"
 # Subentry type identifiers
 SUBENTRY_TYPE_MODULE: Final = "module"
 SUBENTRY_TYPE_MODULE_IMPORT: Final = "module_import"
+SUBENTRY_TYPE_MOOD: Final = "mood"
 
 DEFAULT_INTERFACE: Final = "can0"
 DEFAULT_PORT: Final = 29536
