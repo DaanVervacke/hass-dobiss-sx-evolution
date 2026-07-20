@@ -21,7 +21,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .const import (
     CLOCK_SYNC_INTERVAL_HOURS,
     CONF_CONNECTION_TYPE,
-    CONF_MAX200_HOST,
+    CONF_MASTER_DEVICE,
     CONF_MODULE,
     CONNECTION_TYPE_SOCKETCAND,
     DOMAIN,
@@ -35,8 +35,7 @@ from .controller import (
     SocketcandConnection,
     UsbConnection,
 )
-from .protocol import build_clock_set_packets
-from .tcp_client import Max200TcpClient
+from .serial_client import Max200SerialClient
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -121,9 +120,9 @@ class DobissCoordinator(DataUpdateCoordinator[dict[OutputKey, int]]):
             entry_id=entry.entry_id,
         )
 
-        max200_host = entry.data.get(CONF_MAX200_HOST)
-        self.tcp_client: Max200TcpClient | None = (
-            Max200TcpClient(max200_host) if max200_host else None
+        master_device = entry.data.get(CONF_MASTER_DEVICE)
+        self.serial_client: Max200SerialClient | None = (
+            Max200SerialClient(master_device) if master_device else None
         )
 
         self._debounce_unsub: Callable[[], None] | None = None
@@ -143,7 +142,7 @@ class DobissCoordinator(DataUpdateCoordinator[dict[OutputKey, int]]):
             self.controller.async_add_listener(self._on_controller_update)
         )
 
-        if self.tcp_client is not None:
+        if self.serial_client is not None:
             await self._sync_clock()
             self.config_entry.async_on_unload(
                 async_track_time_interval(
@@ -178,12 +177,13 @@ class DobissCoordinator(DataUpdateCoordinator[dict[OutputKey, int]]):
         self.async_set_updated_data(dict(self.controller.states))
 
     async def _sync_clock(self, _now: Any = None) -> None:
-        """Send current time to the Max200 over TCP."""
-        if self.tcp_client is None:
+        """Send current time to the Max200 over serial."""
+        if self.serial_client is None:
             return
-        intro, output = build_clock_set_packets(datetime.now())
         try:
-            await self.tcp_client.send_command(intro, output)
+            await self.hass.async_add_executor_job(
+                self.serial_client.sync_clock, datetime.now()
+            )
         except Exception:  # noqa: BLE001
             _LOGGER.warning("Clock sync to Max200 failed", exc_info=True)
 

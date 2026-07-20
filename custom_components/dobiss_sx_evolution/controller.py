@@ -28,6 +28,7 @@ from .const import (
     MAX_CAN_BRIGHTNESS_TX,
 )
 from .protocol import (
+    _OUTPUTS_PER_MODULE,
     DUMP_REQUEST_FRAME,
     StateUpdate,
     build_mood_frame,
@@ -316,7 +317,10 @@ class DobissController:
         if self._bus is not None:
             bus = self._bus
             self._bus = None
-            await self.hass.async_add_executor_job(bus.shutdown)
+            try:
+                await self.hass.async_add_executor_job(bus.shutdown)
+            except Exception:  # noqa: BLE001
+                _LOGGER.debug("Error closing bus during shutdown", exc_info=True)
 
     async def async_turn_on(
         self, key: OutputKey, brightness: int | None = None
@@ -654,6 +658,8 @@ class DobissController:
             return None
         update = parse_state_frame(bytes(msg.data))
         if update is None or update.module not in self.modules:
+            return None
+        if update.output < 1 or update.output > _OUTPUTS_PER_MODULE:
             return None
         # Signal the frame arrival BEFORE the state-match filter so a refresh
         # waiter can settle even when the fresh dump matches the cache.

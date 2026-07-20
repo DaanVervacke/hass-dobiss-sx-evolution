@@ -37,15 +37,17 @@ def build_clock_set_packets(dt: datetime) -> tuple[bytes, bytes]:
     intro[1] = 0x4B  # 'K'
     intro[2] = 0x30  # '0'
 
-    output = bytes([
-        to_bcd(dt.second),
-        to_bcd(dt.minute),
-        to_bcd(dt.hour),
-        to_bcd(dt.isoweekday()),
-        to_bcd(dt.day),
-        to_bcd(dt.month),
-        to_bcd(dt.year % 100),
-    ])
+    output = bytes(
+        [
+            to_bcd(dt.second),
+            to_bcd(dt.minute),
+            to_bcd(dt.hour),
+            to_bcd(dt.isoweekday()),
+            to_bcd(dt.day),
+            to_bcd(dt.month),
+            to_bcd(dt.year % 100),
+        ]
+    )
     return bytes(intro), output
 
 
@@ -116,6 +118,8 @@ def parse_config_response(data: bytes) -> list[tuple[str, int]]:
     a valid ASCII letter.  module_index is the slot position (0-17), needed
     for EEPROM address calculation when fetching output names.
     """
+    if len(data) < _MODULES_PER_CONTROLLER:
+        return []
     result: list[tuple[str, int]] = []
     for i in range(_MODULES_PER_CONTROLLER):
         char = data[i]
@@ -130,9 +134,14 @@ def parse_config_response(data: bytes) -> list[tuple[str, int]]:
     return result
 
 
+def output_name_eeprom_addr(module_index: int, output_index: int) -> int:
+    """Calculate EEPROM address for a UitgangVars (u1) record."""
+    return 128 + module_index * 384 + output_index * 32
+
+
 def build_output_name_intro(module_index: int, output_index: int) -> bytes:
     """Build the 16-byte intro for a UitgangVars (u1) download request."""
-    addr = 128 + module_index * 384 + output_index * 32
+    addr = output_name_eeprom_addr(module_index, output_index)
     intro = bytearray(16)
     intro[0] = 0xED
     intro[1] = 0x75  # 'u'

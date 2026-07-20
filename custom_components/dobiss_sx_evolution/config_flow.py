@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from types import MappingProxyType
 from typing import Any
@@ -30,7 +31,7 @@ from .const import (
     CONF_DEVICE,
     CONF_HOST,
     CONF_INTERFACE,
-    CONF_MAX200_HOST,
+    CONF_MASTER_DEVICE,
     CONF_MODULE,
     CONF_NAME,
     CONF_PORT,
@@ -44,16 +45,8 @@ from .const import (
     SUBENTRY_TYPE_MOOD,
 )
 from .controller import ConnectionConfig, SocketcandConnection, UsbConnection
-from .protocol import (
-    _OUTPUTS_PER_MODULE,
-    CONFIG_RESPONSE_SIZE,
-    OUTPUT_NAME_RESPONSE_SIZE,
-    build_config_download_intro,
-    build_output_name_intro,
-    parse_config_response,
-    parse_output_name,
-)
-from .tcp_client import Max200TcpClient
+from .protocol import _OUTPUTS_PER_MODULE
+from .serial_client import Max200SerialClient
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -64,7 +57,6 @@ CONNECTION_SCHEMA = vol.Schema(
             int, vol.Range(min=1, max=65535)
         ),
         vol.Required(CONF_INTERFACE, default=DEFAULT_INTERFACE): str,
-        vol.Optional(CONF_MAX200_HOST, default=""): str,
     }
 )
 
@@ -75,7 +67,27 @@ def _probe_bus_sync(connection: ConnectionConfig) -> None:
     Must be called from an executor thread. Raises on any failure.
     """
     bus = connection.make_bus()
-    bus.shutdown()
+    with contextlib.suppress(Exception):
+        bus.shutdown()
+
+
+def _list_usb_devices() -> list[SelectOptionDict]:
+    """Enumerate USB serial ports and resolve stable device paths."""
+    from homeassistant.components import usb  # noqa: PLC0415
+
+    options: list[SelectOptionDict] = []
+    for port in serial.tools.list_ports.comports():
+        device_path = usb.get_serial_by_id(port.device)
+        display_name = usb.human_readable_device_name(
+            device=device_path,
+            serial_number=port.serial_number,
+            manufacturer=port.manufacturer,
+            description=port.description,
+            vid=port.vid,
+            pid=port.pid,
+        )
+        options.append(SelectOptionDict(label=display_name, value=device_path))
+    return options
 
 
 def _validate_module(module: str) -> str | None:
@@ -138,24 +150,7 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
         return None
 
     async def _build_usb_device_options(self) -> list[SelectOptionDict]:
-        from homeassistant.components import usb  # noqa: PLC0415
-
-        ports = await self.hass.async_add_executor_job(serial.tools.list_ports.comports)
-        options: list[SelectOptionDict] = []
-        for port in ports:
-            device_path = await self.hass.async_add_executor_job(
-                usb.get_serial_by_id, port.device
-            )
-            display_name = usb.human_readable_device_name(
-                device=device_path,
-                serial_number=port.serial_number,
-                manufacturer=port.manufacturer,
-                description=port.description,
-                vid=port.vid,
-                pid=port.pid,
-            )
-            options.append(SelectOptionDict(label=display_name, value=device_path))
-        return options
+        return await self.hass.async_add_executor_job(_list_usb_devices)
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -183,6 +178,7 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Collect socketcand connection details and create the entry."""
         errors: dict[str, str] = {}
+
         if user_input is not None:
             await self.async_set_unique_id(
                 f"{CONNECTION_TYPE_SOCKETCAND}:{user_input[CONF_HOST]}:{user_input[CONF_PORT]}/{user_input[CONF_INTERFACE]}"
@@ -199,15 +195,28 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
                     CONF_PORT: user_input[CONF_PORT],
                     CONF_INTERFACE: user_input[CONF_INTERFACE],
                 }
-                if max200 := user_input.get(CONF_MAX200_HOST, "").strip():
-                    data[CONF_MAX200_HOST] = max200
+                if master := user_input.get(CONF_MASTER_DEVICE, ""):
+                    data[CONF_MASTER_DEVICE] = master
                 return self.async_create_entry(
                     title=f"Max200 ({conn.description})",
                     data=data,
                 )
 
+        master_options = await self._build_usb_device_options()
+        schema = CONNECTION_SCHEMA.extend(
+            {
+                vol.Optional(CONF_MASTER_DEVICE, default=""): SelectSelector(
+                    SelectSelectorConfig(
+                        options=master_options,
+                        mode=SelectSelectorMode.DROPDOWN,
+                        custom_value=True,
+                    )
+                ),
+            }
+        )
+
         return self.async_show_form(
-            step_id="socketcand", data_schema=CONNECTION_SCHEMA, errors=errors
+            step_id="socketcand", data_schema=schema, errors=errors
         )
 
     async def async_step_usb(self, discovery_info: UsbServiceInfo) -> ConfigFlowResult:
@@ -220,10 +229,8 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Collect USB CAN device connection details and create the entry."""
         errors: dict[str, str] = {}
-        device_options = await self._build_usb_device_options()
 
         if user_input is not None:
-            # For USB devices, use device path as unique identifier
             await self.async_set_unique_id(
                 f"{CONNECTION_TYPE_USB}:{user_input[CONF_DEVICE]}"
             )
@@ -237,15 +244,14 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
                     CONF_CONNECTION_TYPE: CONNECTION_TYPE_USB,
                     CONF_DEVICE: user_input[CONF_DEVICE],
                 }
-                if max200 := user_input.get(CONF_MAX200_HOST, "").strip():
-                    data[CONF_MAX200_HOST] = max200
+                if master := user_input.get(CONF_MASTER_DEVICE, ""):
+                    data[CONF_MASTER_DEVICE] = master
                 return self.async_create_entry(
                     title=f"Max200 ({conn.description})",
                     data=data,
                 )
 
-        # Build dynamic schema with available ports, pre-selecting the
-        # device Home Assistant discovered (if any).
+        device_options = await self._build_usb_device_options()
         default_device = getattr(self, "_discovered_usb_device", None)
         device_key = (
             vol.Required(CONF_DEVICE, default=default_device)
@@ -260,7 +266,13 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
                         mode=SelectSelectorMode.DROPDOWN,
                     )
                 ),
-                vol.Optional(CONF_MAX200_HOST, default=""): str,
+                vol.Optional(CONF_MASTER_DEVICE, default=""): SelectSelector(
+                    SelectSelectorConfig(
+                        options=device_options,
+                        mode=SelectSelectorMode.DROPDOWN,
+                        custom_value=True,
+                    )
+                ),
             }
         )
 
@@ -279,12 +291,13 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
                 CONF_HOST: entry_data.get(CONF_HOST, ""),
                 CONF_PORT: entry_data.get(CONF_PORT, DEFAULT_PORT),
                 CONF_INTERFACE: entry_data.get(CONF_INTERFACE, DEFAULT_INTERFACE),
-                CONF_MAX200_HOST: entry_data.get(CONF_MAX200_HOST, ""),
+                CONF_MASTER_DEVICE: entry_data.get(CONF_MASTER_DEVICE, ""),
             }
             return await self.async_step_reauth_socketcand()
         else:
             self._reauth_defaults = {
                 CONF_DEVICE: entry_data.get(CONF_DEVICE, ""),
+                CONF_MASTER_DEVICE: entry_data.get(CONF_MASTER_DEVICE, ""),
             }
             return await self.async_step_reauth_usb()
 
@@ -307,16 +320,18 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
                     CONF_PORT: user_input[CONF_PORT],
                     CONF_INTERFACE: user_input[CONF_INTERFACE],
                 }
-                if max200 := user_input.get(CONF_MAX200_HOST, "").strip():
-                    new_data[CONF_MAX200_HOST] = max200
+                if master := user_input.get(CONF_MASTER_DEVICE, ""):
+                    new_data[CONF_MASTER_DEVICE] = master
                 else:
-                    new_data.pop(CONF_MAX200_HOST, None)
+                    new_data.pop(CONF_MASTER_DEVICE, None)
                 return self.async_update_reload_and_abort(
                     entry,
+                    unique_id=f"{CONNECTION_TYPE_SOCKETCAND}:{user_input[CONF_HOST]}:{user_input[CONF_PORT]}/{user_input[CONF_INTERFACE]}",
                     data=new_data,
                     reason="reauth_successful",
                 )
 
+        master_options = await self._build_usb_device_options()
         defaults = (
             user_input
             or getattr(self, "_reauth_defaults", {})
@@ -324,7 +339,7 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
                 CONF_HOST: entry.data.get(CONF_HOST, ""),
                 CONF_PORT: entry.data.get(CONF_PORT, DEFAULT_PORT),
                 CONF_INTERFACE: entry.data.get(CONF_INTERFACE, DEFAULT_INTERFACE),
-                CONF_MAX200_HOST: entry.data.get(CONF_MAX200_HOST, ""),
+                CONF_MASTER_DEVICE: entry.data.get(CONF_MASTER_DEVICE, ""),
             }
         )
         schema = vol.Schema(
@@ -338,9 +353,15 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
                     default=defaults.get(CONF_INTERFACE, DEFAULT_INTERFACE),
                 ): str,
                 vol.Optional(
-                    CONF_MAX200_HOST,
-                    default=defaults.get(CONF_MAX200_HOST, ""),
-                ): str,
+                    CONF_MASTER_DEVICE,
+                    default=defaults.get(CONF_MASTER_DEVICE, ""),
+                ): SelectSelector(
+                    SelectSelectorConfig(
+                        options=master_options,
+                        mode=SelectSelectorMode.DROPDOWN,
+                        custom_value=True,
+                    )
+                ),
             }
         )
         return self.async_show_form(
@@ -353,7 +374,6 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
         """Confirm reauth by re-probing with new USB connection details."""
         errors: dict[str, str] = {}
         entry = self._get_reauth_entry()
-        device_options = await self._build_usb_device_options()
 
         if user_input is not None:
             conn = UsbConnection.from_config(user_input)
@@ -365,22 +385,23 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
                     **entry.data,
                     CONF_DEVICE: user_input[CONF_DEVICE],
                 }
-                if max200 := user_input.get(CONF_MAX200_HOST, "").strip():
-                    new_data[CONF_MAX200_HOST] = max200
+                if master := user_input.get(CONF_MASTER_DEVICE, ""):
+                    new_data[CONF_MASTER_DEVICE] = master
                 else:
-                    new_data.pop(CONF_MAX200_HOST, None)
+                    new_data.pop(CONF_MASTER_DEVICE, None)
                 return self.async_update_reload_and_abort(
                     entry,
+                    unique_id=f"{CONNECTION_TYPE_USB}:{user_input[CONF_DEVICE]}",
                     data=new_data,
                     reason="reauth_successful",
                 )
 
+        device_options = await self._build_usb_device_options()
         defaults = {
             CONF_DEVICE: entry.data.get(CONF_DEVICE, ""),
-            CONF_MAX200_HOST: entry.data.get(CONF_MAX200_HOST, ""),
+            CONF_MASTER_DEVICE: entry.data.get(CONF_MASTER_DEVICE, ""),
         }
 
-        # Build dynamic schema with available ports
         schema = vol.Schema(
             {
                 vol.Required(
@@ -392,9 +413,15 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
                     )
                 ),
                 vol.Optional(
-                    CONF_MAX200_HOST,
-                    default=defaults.get(CONF_MAX200_HOST, ""),
-                ): str,
+                    CONF_MASTER_DEVICE,
+                    default=defaults.get(CONF_MASTER_DEVICE, ""),
+                ): SelectSelector(
+                    SelectSelectorConfig(
+                        options=device_options,
+                        mode=SelectSelectorMode.DROPDOWN,
+                        custom_value=True,
+                    )
+                ),
             }
         )
         return self.async_show_form(
@@ -441,8 +468,12 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
                     CONF_PORT: user_input[CONF_PORT],
                     CONF_INTERFACE: user_input[CONF_INTERFACE],
                 }
-                if max200 := user_input.get(CONF_MAX200_HOST, "").strip():
-                    data[CONF_MAX200_HOST] = max200
+                if master := user_input.get(CONF_MASTER_DEVICE, ""):
+                    data[CONF_MASTER_DEVICE] = master
+                await self.async_set_unique_id(
+                    f"{CONNECTION_TYPE_SOCKETCAND}:{user_input[CONF_HOST]}:{user_input[CONF_PORT]}/{user_input[CONF_INTERFACE]}"
+                )
+                self._abort_if_unique_id_configured()
                 return self.async_update_reload_and_abort(
                     entry,
                     unique_id=f"{CONNECTION_TYPE_SOCKETCAND}:{user_input[CONF_HOST]}:{user_input[CONF_PORT]}/{user_input[CONF_INTERFACE]}",
@@ -450,11 +481,12 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
                     reason="reconfigure_successful",
                 )
 
+        master_options = await self._build_usb_device_options()
         defaults = {
             CONF_HOST: entry.data.get(CONF_HOST, ""),
             CONF_PORT: entry.data.get(CONF_PORT, DEFAULT_PORT),
             CONF_INTERFACE: entry.data.get(CONF_INTERFACE, DEFAULT_INTERFACE),
-            CONF_MAX200_HOST: entry.data.get(CONF_MAX200_HOST, ""),
+            CONF_MASTER_DEVICE: entry.data.get(CONF_MASTER_DEVICE, ""),
         }
         schema = vol.Schema(
             {
@@ -464,8 +496,14 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
                 ),
                 vol.Required(CONF_INTERFACE, default=defaults[CONF_INTERFACE]): str,
                 vol.Optional(
-                    CONF_MAX200_HOST, default=defaults[CONF_MAX200_HOST]
-                ): str,
+                    CONF_MASTER_DEVICE, default=defaults[CONF_MASTER_DEVICE]
+                ): SelectSelector(
+                    SelectSelectorConfig(
+                        options=master_options,
+                        mode=SelectSelectorMode.DROPDOWN,
+                        custom_value=True,
+                    )
+                ),
             }
         )
         return self.async_show_form(
@@ -478,7 +516,6 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
         """Reconfigure with new USB connection details."""
         errors: dict[str, str] = {}
         entry = self._get_reconfigure_entry()
-        device_options = await self._build_usb_device_options()
 
         if user_input is not None:
             conn = UsbConnection.from_config(user_input)
@@ -490,8 +527,12 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
                     CONF_CONNECTION_TYPE: CONNECTION_TYPE_USB,
                     CONF_DEVICE: user_input[CONF_DEVICE],
                 }
-                if max200 := user_input.get(CONF_MAX200_HOST, "").strip():
-                    data[CONF_MAX200_HOST] = max200
+                if master := user_input.get(CONF_MASTER_DEVICE, ""):
+                    data[CONF_MASTER_DEVICE] = master
+                await self.async_set_unique_id(
+                    f"{CONNECTION_TYPE_USB}:{user_input[CONF_DEVICE]}"
+                )
+                self._abort_if_unique_id_configured()
                 return self.async_update_reload_and_abort(
                     entry,
                     unique_id=f"{CONNECTION_TYPE_USB}:{user_input[CONF_DEVICE]}",
@@ -499,9 +540,10 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
                     reason="reconfigure_successful",
                 )
 
+        device_options = await self._build_usb_device_options()
         defaults = {
             CONF_DEVICE: entry.data.get(CONF_DEVICE, ""),
-            CONF_MAX200_HOST: entry.data.get(CONF_MAX200_HOST, ""),
+            CONF_MASTER_DEVICE: entry.data.get(CONF_MASTER_DEVICE, ""),
         }
         schema = vol.Schema(
             {
@@ -514,8 +556,14 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
                     )
                 ),
                 vol.Optional(
-                    CONF_MAX200_HOST, default=defaults[CONF_MAX200_HOST]
-                ): str,
+                    CONF_MASTER_DEVICE, default=defaults[CONF_MASTER_DEVICE]
+                ): SelectSelector(
+                    SelectSelectorConfig(
+                        options=device_options,
+                        mode=SelectSelectorMode.DROPDOWN,
+                        custom_value=True,
+                    )
+                ),
             }
         )
         return self.async_show_form(
@@ -532,7 +580,7 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
             SUBENTRY_TYPE_MODULE: ModuleSubentryFlowHandler,
             SUBENTRY_TYPE_MOOD: MoodSubentryFlowHandler,
         }
-        if config_entry.data.get(CONF_MAX200_HOST):
+        if config_entry.data.get(CONF_MASTER_DEVICE):
             types[SUBENTRY_TYPE_MODULE_IMPORT] = ModuleImportSubentryFlowHandler
         return types
 
@@ -875,9 +923,9 @@ class ModuleImportSubentryFlowHandler(ConfigSubentryFlow):
     ) -> SubentryFlowResult:
         """Download module config from Max200 and create subentries."""
         entry = self._get_entry()
-        max200_host = entry.data.get(CONF_MAX200_HOST)
-        if not max200_host:
-            return self.async_abort(reason="no_max200_host")
+        master_device = entry.data.get(CONF_MASTER_DEVICE)
+        if not master_device:
+            return self.async_abort(reason="no_master_device")
 
         existing_letters = {
             sub.data[CONF_MODULE]
@@ -885,20 +933,19 @@ class ModuleImportSubentryFlowHandler(ConfigSubentryFlow):
             if sub.subentry_type == SUBENTRY_TYPE_MODULE
         }
 
-        client = Max200TcpClient(max200_host)
+        client = Max200SerialClient(master_device)
 
         try:
-            config_data = await client.send_and_receive(
-                build_config_download_intro(),
-                response_size=CONFIG_RESPONSE_SIZE,
+            modules = await self.hass.async_add_executor_job(
+                client.download_config,
             )
-        except (TimeoutError, OSError) as err:
+        except Exception as err:  # noqa: BLE001
             _LOGGER.warning("Failed to download config from Max200: %s", err)
             return self.async_abort(reason="import_failed")
 
-        modules = parse_config_response(config_data)
-        new_modules = [(letter, idx) for letter, idx in modules
-                       if letter not in existing_letters]
+        new_modules = [
+            (letter, idx) for letter, idx in modules if letter not in existing_letters
+        ]
 
         if not new_modules:
             return self.async_abort(reason="no_new_modules")
@@ -908,17 +955,19 @@ class ModuleImportSubentryFlowHandler(ConfigSubentryFlow):
             outputs: dict[str, dict[str, str]] = {}
             for output_index in range(_OUTPUTS_PER_MODULE):
                 try:
-                    name_data = await client.send_and_receive(
-                        build_output_name_intro(module_index, output_index),
-                        response_size=OUTPUT_NAME_RESPONSE_SIZE,
+                    name = await self.hass.async_add_executor_job(
+                        client.download_output_name,
+                        module_index,
+                        output_index,
                     )
-                except (TimeoutError, OSError) as err:
+                except Exception as err:  # noqa: BLE001
                     _LOGGER.debug(
                         "Failed to fetch output %d for module %s: %s",
-                        output_index + 1, letter, err,
+                        output_index + 1,
+                        letter,
+                        err,
                     )
                     continue
-                name = parse_output_name(name_data)
                 if name is not None:
                     outputs[str(output_index + 1)] = {
                         "type": "light",
@@ -926,11 +975,13 @@ class ModuleImportSubentryFlowHandler(ConfigSubentryFlow):
                     }
 
             subentry = ConfigSubentry(
-                data=MappingProxyType({
-                    CONF_MODULE: letter,
-                    "dimmable": False,
-                    "outputs": outputs,
-                }),
+                data=MappingProxyType(
+                    {
+                        CONF_MODULE: letter,
+                        "dimmable": False,
+                        "outputs": outputs,
+                    }
+                ),
                 subentry_type=SUBENTRY_TYPE_MODULE,
                 title=f"Module {letter}",
                 unique_id=f"module:{letter}",

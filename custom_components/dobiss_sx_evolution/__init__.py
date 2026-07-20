@@ -17,7 +17,7 @@ from .const import (
     CONF_DEVICE,
     CONF_HOST,
     CONF_INTERFACE,
-    CONF_MAX200_HOST,
+    CONF_MASTER_DEVICE,
     CONF_MODULE,
     CONF_PORT,
     DOMAIN,
@@ -120,7 +120,7 @@ def _connection_key(entry: DobissConfigEntry) -> _ConnectionKey:
         entry.data.get(CONF_PORT),
         entry.data.get(CONF_INTERFACE),
         entry.data.get(CONF_DEVICE),
-        entry.data.get(CONF_MAX200_HOST),
+        entry.data.get(CONF_MASTER_DEVICE),
     )
 
 

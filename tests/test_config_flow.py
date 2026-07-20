@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from homeassistant import config_entries
@@ -18,7 +18,7 @@ from custom_components.dobiss_sx_evolution.config_flow import (
 )
 from custom_components.dobiss_sx_evolution.const import (
     CONF_DEVICE,
-    CONF_MAX200_HOST,
+    CONF_MASTER_DEVICE,
     CONF_MODULE,
     CONNECTION_TYPE_SOCKETCAND,
     CONNECTION_TYPE_USB,
@@ -295,6 +295,48 @@ async def test_reauth_flow_success(hass: HomeAssistant, mock_probe) -> None:
     assert entry.data["host"] == "192.168.1.99"
 
 
+async def test_reauth_socketcand_updates_unique_id(
+    hass: HomeAssistant, mock_probe
+) -> None:
+    """Reauth with a new host updates the entry's unique_id to match."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            "connection_type": CONNECTION_TYPE_SOCKETCAND,
+            **MOCK_CONFIG,
+        },
+        unique_id=f"{CONNECTION_TYPE_SOCKETCAND}:{MOCK_CONFIG['host']}:{MOCK_CONFIG['port']}/{MOCK_CONFIG['interface']}",
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={
+            "source": config_entries.SOURCE_REAUTH,
+            "entry_id": entry.entry_id,
+        },
+        data=entry.data,
+    )
+
+    new_config = {**MOCK_CONFIG, "host": "192.168.1.99"}
+    with patch(
+        "custom_components.dobiss_sx_evolution.async_setup_entry",
+        return_value=True,
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"], user_input=new_config
+        )
+        await hass.async_block_till_done()
+
+    assert result2["type"] == FlowResultType.ABORT
+    assert result2["reason"] == "reauth_successful"
+    expected_unique_id = (
+        f"{CONNECTION_TYPE_SOCKETCAND}:192.168.1.99"
+        f":{MOCK_CONFIG['port']}/{MOCK_CONFIG['interface']}"
+    )
+    assert entry.unique_id == expected_unique_id
+
+
 async def test_reauth_flow_cannot_connect(hass: HomeAssistant) -> None:
     """Reauth flow re-renders form on probe failure."""
     entry = MockConfigEntry(
@@ -398,6 +440,40 @@ async def test_reconfigure_socketcand_success(hass: HomeAssistant, mock_probe) -
     assert entry.data["host"] == "10.0.0.99"
 
 
+async def test_reconfigure_socketcand_aborts_on_collision(
+    hass: HomeAssistant, mock_probe
+) -> None:
+    """Reconfigure aborts when the new params collide with another entry."""
+    other_config = {**MOCK_CONFIG, "host": "10.0.0.42"}
+    other_entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={"connection_type": CONNECTION_TYPE_SOCKETCAND, **other_config},
+        unique_id=f"{CONNECTION_TYPE_SOCKETCAND}:{other_config['host']}:{other_config['port']}/{other_config['interface']}",
+    )
+    other_entry.add_to_hass(hass)
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={"connection_type": CONNECTION_TYPE_SOCKETCAND, **MOCK_CONFIG},
+        unique_id=f"{CONNECTION_TYPE_SOCKETCAND}:{MOCK_CONFIG['host']}:{MOCK_CONFIG['port']}/{MOCK_CONFIG['interface']}",
+    )
+    entry.add_to_hass(hass)
+
+    result = await entry.start_reconfigure_flow(hass)
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={"connection_type": CONNECTION_TYPE_SOCKETCAND},
+    )
+
+    result3 = await hass.config_entries.flow.async_configure(
+        result2["flow_id"], user_input=other_config
+    )
+
+    assert result3["type"] == FlowResultType.ABORT
+    assert result3["reason"] == "already_configured"
+    assert entry.data["host"] == MOCK_CONFIG["host"]
+
+
 async def test_reconfigure_cannot_connect(
     hass: HomeAssistant,
 ) -> None:
@@ -461,6 +537,42 @@ async def test_reconfigure_usb_success(
     assert result3["reason"] == "reconfigure_successful"
     assert entry.data["connection_type"] == CONNECTION_TYPE_USB
     assert entry.data[CONF_DEVICE] == MOCK_USB_DEVICE
+
+
+async def test_reconfigure_usb_aborts_on_collision(
+    hass: HomeAssistant, mock_probe, mock_usb_ports
+) -> None:
+    """Reconfigure to USB aborts when the device collides with another entry."""
+    other_entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            "connection_type": CONNECTION_TYPE_USB,
+            CONF_DEVICE: MOCK_USB_DEVICE,
+        },
+        unique_id=f"{CONNECTION_TYPE_USB}:{MOCK_USB_DEVICE}",
+    )
+    other_entry.add_to_hass(hass)
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={"connection_type": CONNECTION_TYPE_SOCKETCAND, **MOCK_CONFIG},
+        unique_id=f"{CONNECTION_TYPE_SOCKETCAND}:{MOCK_CONFIG['host']}:{MOCK_CONFIG['port']}/{MOCK_CONFIG['interface']}",
+    )
+    entry.add_to_hass(hass)
+
+    result = await entry.start_reconfigure_flow(hass)
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={"connection_type": CONNECTION_TYPE_USB},
+    )
+
+    result3 = await hass.config_entries.flow.async_configure(
+        result2["flow_id"], user_input={CONF_DEVICE: MOCK_USB_DEVICE}
+    )
+
+    assert result3["type"] == FlowResultType.ABORT
+    assert result3["reason"] == "already_configured"
+    assert entry.data["connection_type"] == CONNECTION_TYPE_SOCKETCAND
 
 
 # ---------------------------------------------------------------------------
@@ -1522,6 +1634,44 @@ async def test_reauth_usb_flow_success(
     assert entry.data[CONF_DEVICE] == MOCK_USB_DEVICE
 
 
+async def test_reauth_usb_updates_unique_id(
+    hass: HomeAssistant, mock_probe, mock_usb_ports
+) -> None:
+    """USB reauth with a new device path updates the entry's unique_id."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            "connection_type": CONNECTION_TYPE_USB,
+            CONF_DEVICE: "/dev/serial/by-id/old-device",
+        },
+        unique_id=f"{CONNECTION_TYPE_USB}:/dev/serial/by-id/old-device",
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={
+            "source": config_entries.SOURCE_REAUTH,
+            "entry_id": entry.entry_id,
+        },
+        data=entry.data,
+    )
+
+    with patch(
+        "custom_components.dobiss_sx_evolution.async_setup_entry",
+        return_value=True,
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={CONF_DEVICE: MOCK_USB_DEVICE},
+        )
+        await hass.async_block_till_done()
+
+    assert result2["type"] == FlowResultType.ABORT
+    assert result2["reason"] == "reauth_successful"
+    assert entry.unique_id == f"{CONNECTION_TYPE_USB}:{MOCK_USB_DEVICE}"
+
+
 async def test_reauth_usb_flow_cannot_connect(
     hass: HomeAssistant, mock_usb_ports
 ) -> None:
@@ -1564,9 +1714,11 @@ async def test_reauth_usb_flow_cannot_connect(
 # ModuleImportSubentryFlowHandler
 # ---------------------------------------------------------------------------
 
-MOCK_CONFIG_WITH_MAX200 = {
+MOCK_MASTER_DEVICE = "/dev/serial/by-id/usb-mock-master"
+
+MOCK_CONFIG_WITH_MASTER = {
     **MOCK_CONFIG,
-    CONF_MAX200_HOST: "10.0.0.50",
+    CONF_MASTER_DEVICE: MOCK_MASTER_DEVICE,
 }
 
 
@@ -1582,7 +1734,7 @@ def _make_output_name_response(name: str) -> bytes:
     """Build a 32-byte UitgangVars response with the given output name."""
     data = bytearray(32)
     encoded = name.encode("ascii")
-    data[:len(encoded)] = encoded
+    data[: len(encoded)] = encoded
     return bytes(data)
 
 
@@ -1594,25 +1746,25 @@ def _make_unconfigured_output_response() -> bytes:
 
 
 @pytest.fixture
-def mock_coordinator_tcp():
-    """Patch Max200TcpClient in the coordinator to prevent real sockets."""
+def mock_coordinator_serial():
+    """Patch Max200SerialClient in the coordinator to prevent real serial I/O."""
     with patch(
-        "custom_components.dobiss_sx_evolution.coordinator.Max200TcpClient",
+        "custom_components.dobiss_sx_evolution.coordinator.Max200SerialClient",
     ):
         yield
 
 
-async def _setup_entry_with_max200(
+async def _setup_entry_with_master(
     hass: HomeAssistant,
     mock_controller,
     subentries_data: list[dict] | None = None,
 ) -> MockConfigEntry:
-    """Create a config entry with max200_host set."""
+    """Create a config entry with master_device set."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={
             "connection_type": CONNECTION_TYPE_SOCKETCAND,
-            **MOCK_CONFIG_WITH_MAX200,
+            **MOCK_CONFIG_WITH_MASTER,
         },
         unique_id=f"{CONNECTION_TYPE_SOCKETCAND}:{MOCK_CONFIG['host']}:{MOCK_CONFIG['port']}/{MOCK_CONFIG['interface']}",
         version=1,
@@ -1624,69 +1776,48 @@ async def _setup_entry_with_max200(
     return entry
 
 
-async def test_import_subentry_type_hidden_without_max200(
+async def test_import_subentry_type_hidden_without_master(
     hass: HomeAssistant, mock_controller
 ) -> None:
-    """module_import is not offered when max200_host is not configured."""
+    """module_import is not offered when master_device is not configured."""
     entry = await _setup_loaded_entry(hass, mock_controller)
     types = DobissConfigFlow.async_get_supported_subentry_types(entry)
     assert SUBENTRY_TYPE_MODULE_IMPORT not in types
     assert SUBENTRY_TYPE_MODULE in types
 
 
-async def test_import_subentry_type_shown_with_max200(
-    hass: HomeAssistant, mock_controller, mock_coordinator_tcp
+async def test_import_subentry_type_shown_with_master(
+    hass: HomeAssistant, mock_controller, mock_coordinator_serial
 ) -> None:
-    """module_import is offered when max200_host is configured."""
-    entry = await _setup_entry_with_max200(hass, mock_controller)
+    """module_import is offered when master_device is configured."""
+    entry = await _setup_entry_with_master(hass, mock_controller)
     types = DobissConfigFlow.async_get_supported_subentry_types(entry)
     assert SUBENTRY_TYPE_MODULE_IMPORT in types
 
 
 async def test_import_creates_subentries(
-    hass: HomeAssistant, mock_controller, mock_coordinator_tcp
+    hass: HomeAssistant, mock_controller, mock_coordinator_serial
 ) -> None:
     """Import downloads config and creates module subentries with output names."""
-    entry = await _setup_entry_with_max200(hass, mock_controller)
+    entry = await _setup_entry_with_master(hass, mock_controller)
 
-    config_resp = _make_config_response(("A", 0), ("B", 1))
+    modules = [("A", 0), ("B", 1)]
+    output_names = {}
+    output_names[(0, 0)] = "Kitchen"
+    output_names[(0, 2)] = "Living"
+    output_names[(1, 0)] = "Bedroom"
 
-    output_responses = {}
-    for mod_idx in (0, 1):
-        for out_idx in range(12):
-            output_responses[(mod_idx, out_idx)] = _make_unconfigured_output_response()
-    output_responses[(0, 0)] = _make_output_name_response("Kitchen")
-    output_responses[(0, 2)] = _make_output_name_response("Living")
-    output_responses[(1, 0)] = _make_output_name_response("Bedroom")
-
-    call_count = 0
-
-    async def mock_send_and_receive(intro, response_size):
-        nonlocal call_count
-        if call_count == 0:
-            call_count += 1
-            return config_resp
-        call_count += 1
-        mod_idx = None
-        out_idx = None
-        for m in range(18):
-            for o in range(12):
-                addr = 128 + m * 384 + o * 32
-                if intro[4] == addr >> 8 and intro[5] == addr & 0xFF:
-                    mod_idx = m
-                    out_idx = o
-                    break
-            if mod_idx is not None:
-                break
-        if mod_idx is not None and (mod_idx, out_idx) in output_responses:
-            return output_responses[(mod_idx, out_idx)]
-        return _make_unconfigured_output_response()
+    def mock_download_output_name(mod_idx, out_idx):
+        return output_names.get((mod_idx, out_idx))
 
     with patch(
-        "custom_components.dobiss_sx_evolution.config_flow.Max200TcpClient"
+        "custom_components.dobiss_sx_evolution.config_flow.Max200SerialClient"
     ) as mock_client_cls:
         mock_client = mock_client_cls.return_value
-        mock_client.send_and_receive = mock_send_and_receive
+        mock_client.download_config = MagicMock(return_value=modules)
+        mock_client.download_output_name = MagicMock(
+            side_effect=mock_download_output_name
+        )
 
         result = await hass.config_entries.subentries.async_init(
             (entry.entry_id, SUBENTRY_TYPE_MODULE_IMPORT),
@@ -1718,10 +1849,10 @@ async def test_import_creates_subentries(
 
 
 async def test_import_skips_existing_modules(
-    hass: HomeAssistant, mock_controller, mock_coordinator_tcp
+    hass: HomeAssistant, mock_controller, mock_coordinator_serial
 ) -> None:
     """Modules that already have a subentry are skipped."""
-    entry = await _setup_entry_with_max200(
+    entry = await _setup_entry_with_master(
         hass,
         mock_controller,
         subentries_data=[
@@ -1734,18 +1865,12 @@ async def test_import_skips_existing_modules(
         ],
     )
 
-    config_resp = _make_config_response(("A", 0), ("B", 1))
-
-    async def mock_send_and_receive(intro, response_size):
-        if intro[1] == 0x61:
-            return config_resp
-        return _make_unconfigured_output_response()
-
     with patch(
-        "custom_components.dobiss_sx_evolution.config_flow.Max200TcpClient"
+        "custom_components.dobiss_sx_evolution.config_flow.Max200SerialClient"
     ) as mock_client_cls:
         mock_client = mock_client_cls.return_value
-        mock_client.send_and_receive = mock_send_and_receive
+        mock_client.download_config = MagicMock(return_value=[("A", 0), ("B", 1)])
+        mock_client.download_output_name = MagicMock(return_value=None)
 
         result = await hass.config_entries.subentries.async_init(
             (entry.entry_id, SUBENTRY_TYPE_MODULE_IMPORT),
@@ -1765,10 +1890,10 @@ async def test_import_skips_existing_modules(
 
 
 async def test_import_no_new_modules(
-    hass: HomeAssistant, mock_controller, mock_coordinator_tcp
+    hass: HomeAssistant, mock_controller, mock_coordinator_serial
 ) -> None:
     """When all modules already exist, abort with no_new_modules."""
-    entry = await _setup_entry_with_max200(
+    entry = await _setup_entry_with_master(
         hass,
         mock_controller,
         subentries_data=[
@@ -1781,13 +1906,11 @@ async def test_import_no_new_modules(
         ],
     )
 
-    config_resp = _make_config_response(("A", 0))
-
     with patch(
-        "custom_components.dobiss_sx_evolution.config_flow.Max200TcpClient"
+        "custom_components.dobiss_sx_evolution.config_flow.Max200SerialClient"
     ) as mock_client_cls:
         mock_client = mock_client_cls.return_value
-        mock_client.send_and_receive = AsyncMock(return_value=config_resp)
+        mock_client.download_config = MagicMock(return_value=[("A", 0)])
 
         result = await hass.config_entries.subentries.async_init(
             (entry.entry_id, SUBENTRY_TYPE_MODULE_IMPORT),
@@ -1798,18 +1921,18 @@ async def test_import_no_new_modules(
     assert result["reason"] == "no_new_modules"
 
 
-async def test_import_tcp_failure(
-    hass: HomeAssistant, mock_controller, mock_coordinator_tcp
+async def test_import_serial_failure(
+    hass: HomeAssistant, mock_controller, mock_coordinator_serial
 ) -> None:
-    """TCP connection failure aborts with import_failed."""
-    entry = await _setup_entry_with_max200(hass, mock_controller)
+    """Serial connection failure aborts with import_failed."""
+    entry = await _setup_entry_with_master(hass, mock_controller)
 
     with patch(
-        "custom_components.dobiss_sx_evolution.config_flow.Max200TcpClient"
+        "custom_components.dobiss_sx_evolution.config_flow.Max200SerialClient"
     ) as mock_client_cls:
         mock_client = mock_client_cls.return_value
-        mock_client.send_and_receive = AsyncMock(
-            side_effect=OSError("Connection refused")
+        mock_client.download_config = MagicMock(
+            side_effect=ConnectionError("device gone")
         )
 
         result = await hass.config_entries.subentries.async_init(
@@ -1826,18 +1949,14 @@ async def test_import_tcp_failure(
 # ---------------------------------------------------------------------------
 
 
-async def test_mood_subentry_type_shown(
-    hass: HomeAssistant, mock_controller
-) -> None:
+async def test_mood_subentry_type_shown(hass: HomeAssistant, mock_controller) -> None:
     """Mood subentry type is always available (no Max200 required)."""
     entry = await _setup_loaded_entry(hass, mock_controller)
     types = DobissConfigFlow.async_get_supported_subentry_types(entry)
     assert SUBENTRY_TYPE_MOOD in types
 
 
-async def test_add_mood_subentry(
-    hass: HomeAssistant, mock_controller
-) -> None:
+async def test_add_mood_subentry(hass: HomeAssistant, mock_controller) -> None:
     """Adding a mood creates a subentry with the correct data."""
     entry = await _setup_loaded_entry(hass, mock_controller)
 
@@ -1855,16 +1974,15 @@ async def test_add_mood_subentry(
     assert result["title"] == "Night Mode"
 
     mood_subs = [
-        sub for sub in entry.subentries.values()
+        sub
+        for sub in entry.subentries.values()
         if sub.subentry_type == SUBENTRY_TYPE_MOOD
     ]
     assert len(mood_subs) == 1
     assert mood_subs[0].data["mood_number"] == 5
 
 
-async def test_add_mood_default_name(
-    hass: HomeAssistant, mock_controller
-) -> None:
+async def test_add_mood_default_name(hass: HomeAssistant, mock_controller) -> None:
     """A mood without a name gets a default title."""
     entry = await _setup_loaded_entry(hass, mock_controller)
 
@@ -1880,9 +1998,7 @@ async def test_add_mood_default_name(
     assert result["title"] == "Mood 12"
 
 
-async def test_add_mood_duplicate(
-    hass: HomeAssistant, mock_controller
-) -> None:
+async def test_add_mood_duplicate(hass: HomeAssistant, mock_controller) -> None:
     """Adding a mood with an already-used number shows an error."""
     entry = await _setup_loaded_entry(
         hass,

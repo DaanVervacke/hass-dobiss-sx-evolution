@@ -20,6 +20,8 @@ async def test_diagnostics_socketcand_redacts_host(
     hass: HomeAssistant, mock_controller
 ) -> None:
     """Socketcand connections redact the host but keep other connection fields."""
+    mock_controller.switches = [("A", 5)]
+
     entry = MockConfigEntry(
         domain=DOMAIN, data=_make_entry_data(), title="DOBISS", version=1
     )
@@ -36,6 +38,7 @@ async def test_diagnostics_socketcand_redacts_host(
     assert connection["host"] == REDACTED
     assert connection["port"] == conn.port
     assert connection["can_interface"] == conn.interface
+    assert diagnostics["controller"]["switches"] == [["A", 5]]
 
 
 async def test_diagnostics_usb_redacts_device(

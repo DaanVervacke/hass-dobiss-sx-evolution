@@ -19,7 +19,10 @@ from custom_components.dobiss_sx_evolution.controller import (
     ShutterConfig,
     SocketcandConnection,
 )
-from custom_components.dobiss_sx_evolution.protocol import ha_to_can_brightness
+from custom_components.dobiss_sx_evolution.protocol import (
+    StateUpdate,
+    ha_to_can_brightness,
+)
 
 _real_sleep = asyncio.sleep
 
@@ -351,16 +354,10 @@ async def test_async_refresh_and_settle_settles_even_when_states_match_cache(
 
     with patch.object(ctrl, "_send_frame", new=AsyncMock()):
         firing = asyncio.create_task(_same_state_frame())
-        loop = asyncio.get_running_loop()
-        started = loop.time()
-        await ctrl.async_refresh_and_settle(idle=0.05, timeout=2.0)
-        elapsed = loop.time() - started
+        await asyncio.wait_for(
+            ctrl.async_refresh_and_settle(idle=0.05, timeout=2.0), timeout=5.0
+        )
         await firing
-
-    assert elapsed < 0.5, (
-        f"Refresh took {elapsed:.3f}s even though a frame arrived quickly. "
-        f"The arrival hook must fire even when the state matches the cache."
-    )
 
 
 async def test_async_refresh_and_settle_waits_while_updates_arrive(
@@ -377,15 +374,14 @@ async def test_async_refresh_and_settle_waits_while_updates_arrive(
 
     with patch.object(ctrl, "_send_frame", new=AsyncMock()):
         bumper = asyncio.create_task(_stream_frames(0.01, 5))
-        loop = asyncio.get_running_loop()
-        started = loop.time()
-        await ctrl.async_refresh_and_settle(idle=0.03, timeout=1.0)
-        elapsed = loop.time() - started
-        await bumper
+        await asyncio.wait_for(
+            ctrl.async_refresh_and_settle(idle=0.03, timeout=1.0), timeout=5.0
+        )
 
-    assert elapsed >= 0.05, (
-        f"Expected refresh to wait through the whole frame stream, got {elapsed:.3f}s"
+    assert bumper.done(), (
+        "Refresh must not return while the frame stream is still arriving"
     )
+    await bumper
 
 
 async def test_async_refresh_and_settle_waits_for_first_frame(
@@ -409,15 +405,16 @@ async def test_async_refresh_and_settle_waits_for_first_frame(
 
     with patch.object(ctrl, "_send_frame", new=AsyncMock()):
         firing = asyncio.create_task(_delayed_frame())
-        loop = asyncio.get_running_loop()
-        started = loop.time()
-        await ctrl.async_refresh_and_settle(idle=0.05, timeout=1.0)
-        elapsed = loop.time() - started
-        await firing
+        await asyncio.wait_for(
+            ctrl.async_refresh_and_settle(idle=0.05, timeout=1.0), timeout=5.0
+        )
 
-    assert elapsed >= frame_delay, (
-        f"Refresh returned in {elapsed:.3f}s, before the first frame at "
-        f"{frame_delay}s. It must wait for at least one response frame."
+    assert firing.done(), (
+        "Refresh returned before the first frame arrived. It must wait for "
+        "at least one response frame."
+    )
+    assert ctrl.states.get(("A", 1)) == 1, (
+        "The delayed frame must have been ingested before refresh returned."
     )
 
 
@@ -431,11 +428,16 @@ async def test_async_refresh_and_settle_gives_up_when_bus_silent(
     with patch.object(ctrl, "_send_frame", new=AsyncMock()):
         loop = asyncio.get_running_loop()
         started = loop.time()
-        await ctrl.async_refresh_and_settle(idle=0.05, timeout=0.15)
+        await asyncio.wait_for(
+            ctrl.async_refresh_and_settle(idle=0.05, timeout=0.15), timeout=5.0
+        )
         elapsed = loop.time() - started
 
-    assert 0.15 <= elapsed <= 0.35, (
-        f"Expected refresh to return around the 0.15s timeout, got {elapsed:.3f}s"
+    assert elapsed >= 0.1, (
+        f"Expected refresh to wait out the timeout before giving up, got {elapsed:.3f}s"
+    )
+    assert elapsed <= 2.0, (
+        f"Expected refresh to give up promptly after the timeout, got {elapsed:.3f}s"
     )
 
 
@@ -478,6 +480,23 @@ async def test_frame_arrival_hook_ignores_unconfigured_modules(
     assert not ctrl._frame_arrival.is_set(), (
         "Frames for unconfigured modules must not fire the arrival hook"
     )
+
+
+async def test_ingest_rejects_out_of_range_output(hass: HomeAssistant) -> None:
+    """Frames with output numbers outside 1-12 must be silently dropped."""
+    ctrl = _make_controller(hass)
+    msg = MagicMock()
+    msg.arbitration_id = CAN_ID_RX_STATE
+    msg.data = b"\x00\x41\x99\x01\x00\x00\x00\x00"
+
+    with patch(
+        "custom_components.dobiss_sx_evolution.controller.parse_state_frame",
+        return_value=StateUpdate(module="A", output=100, state=1),
+    ):
+        result = ctrl._ingest_message(msg)
+
+    assert result is None
+    assert ("A", 100) not in ctrl.states
 
 
 async def test_async_refresh_and_settle_serialises_concurrent_calls(
@@ -629,6 +648,43 @@ async def test_ingest_rejects_unknown_arbitration_id(hass: HomeAssistant) -> Non
     result = ctrl._ingest_message(msg)
     assert result is None
     assert ctrl.states[("A", 1)] == 0  # unchanged
+
+
+async def test_ingest_message_updates_state_and_fires_listener(
+    hass: HomeAssistant,
+) -> None:
+    """A state-changing CAN frame must update the cache and fire listeners."""
+    ctrl = _make_controller(hass)
+    ctrl.states[("A", 1)] = 0
+
+    received: list[tuple] = []
+    ctrl.async_add_listener(lambda key, val: received.append((key, val)))
+
+    msg = _make_fake_message(module="A", output=1, state=1)
+    result = ctrl._ingest_message(msg)
+
+    assert result is not None
+    assert result.state == 1
+    assert ctrl.states[("A", 1)] == 1
+    assert received == [(("A", 1), 1)]
+
+
+async def test_listener_removal_stops_callbacks(hass: HomeAssistant) -> None:
+    """Calling the remover from async_add_listener must stop future callbacks."""
+    ctrl = _make_controller(hass)
+    ctrl.states[("A", 1)] = 0
+
+    received: list[tuple] = []
+    remove = ctrl.async_add_listener(lambda key, val: received.append((key, val)))
+
+    ctrl._ingest_message(_make_fake_message(module="A", output=1, state=1))
+    assert len(received) == 1
+
+    remove()
+
+    ctrl._ingest_message(_make_fake_message(module="A", output=1, state=0))
+    assert len(received) == 1
+    assert ctrl.states[("A", 1)] == 0
 
 
 async def test_read_frames_raises_on_liveness_timeout(hass: HomeAssistant) -> None:

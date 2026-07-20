@@ -19,9 +19,7 @@ from custom_components.dobiss_sx_evolution.const import (
 from .conftest import MOCK_CONFIG, MOCK_CONNECTION
 
 
-def _mood_subentry_data(
-    mood_number: int = 0, name: str = "Test Mood"
-) -> dict:
+def _mood_subentry_data(mood_number: int = 0, name: str = "Test Mood") -> dict:
     return {
         "subentry_type": SUBENTRY_TYPE_MOOD,
         "title": name,
@@ -168,8 +166,7 @@ async def test_scene_hub_device_not_duplicated(hass: HomeAssistant) -> None:
     device_reg = dr.async_get(hass)
     hub_identifier = (DOMAIN, entry.entry_id)
     devices = [
-        d for d in device_reg.devices.values()
-        if hub_identifier in d.identifiers
+        d for d in device_reg.devices.values() if hub_identifier in d.identifiers
     ]
     assert len(devices) == 1, f"Expected 1 hub device, got {len(devices)}"
 
@@ -185,7 +182,8 @@ async def test_scene_unique_id(hass: HomeAssistant) -> None:
     assert ent is not None
 
     mood_subentry_id = next(
-        sid for sid, sub in entry.subentries.items()
+        sid
+        for sid, sub in entry.subentries.items()
         if sub.subentry_type == SUBENTRY_TYPE_MOOD
     )
     assert ent.unique_id == f"{mood_subentry_id}-mood"

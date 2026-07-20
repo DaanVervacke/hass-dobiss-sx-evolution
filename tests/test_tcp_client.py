@@ -49,7 +49,7 @@ async def test_send_command_intro_only(mock_open) -> None:
     mock_open.return_value = (_mock_reader(), writer)
 
     client = Max200TcpClient("10.0.0.1", 1001)
-    intro = b"\xED" + bytes(15)
+    intro = b"\xed" + bytes(15)
     await client.send_command(intro)
 
     assert writer.write.call_count == 1
@@ -71,13 +71,13 @@ async def test_send_command_connect_failure_logs_warning(mock_open, caplog) -> N
 async def test_send_and_receive(mock_open) -> None:
     """send_and_receive reads back the expected response."""
     writer = _mock_writer()
-    reader = _mock_reader(b"\xAA")
+    reader = _mock_reader(b"\xaa")
     mock_open.return_value = (reader, writer)
 
     client = Max200TcpClient("10.0.0.1", 1001)
     response = await client.send_and_receive(bytes(16), response_size=1)
 
-    assert response == b"\xAA"
+    assert response == b"\xaa"
     reader.readexactly.assert_awaited_once_with(1)
     writer.close.assert_called_once()
 

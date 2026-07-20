@@ -15,6 +15,7 @@ from custom_components.dobiss_sx_evolution.protocol import (
     build_state_frame,
     can_to_ha_brightness,
     ha_to_can_brightness,
+    output_name_eeprom_addr,
     parse_config_response,
     parse_output_name,
     parse_state_frame,
@@ -310,7 +311,7 @@ def test_build_clock_set_packets_bcd_values():
     assert output[2] == to_bcd(14)  # hour
     assert output[3] == to_bcd(dt.isoweekday())  # dow (Friday = 5)
     assert output[4] == to_bcd(17)  # day
-    assert output[5] == to_bcd(7)   # month
+    assert output[5] == to_bcd(7)  # month
     assert output[6] == to_bcd(26)  # year % 100
 
 
@@ -367,6 +368,12 @@ def test_parse_config_response_lowercase_uppercased():
     assert result == [("B", 5)]
 
 
+def test_parse_config_response_short_data_returns_empty():
+    """Data shorter than the module count is rejected instead of raising."""
+    assert parse_config_response(b"") == []
+    assert parse_config_response(b"\x41" * 5) == []
+
+
 # ---------------------------------------------------------------------------
 # build_output_name_intro
 # ---------------------------------------------------------------------------
@@ -402,7 +409,7 @@ def test_parse_output_name_valid():
     """A configured output returns its trimmed name."""
     data = bytearray(32)
     name = b"Kitchen ceiling"
-    data[:len(name)] = name
+    data[: len(name)] = name
     assert parse_output_name(bytes(data)) == "Kitchen ceiling"
 
 
@@ -465,3 +472,26 @@ def test_build_mood_frame_out_of_range():
     assert build_mood_frame(-1) is None
     assert build_mood_frame(100) is None
     assert build_mood_frame(255) is None
+
+
+# ---------------------------------------------------------------------------
+# output_name_eeprom_addr
+# ---------------------------------------------------------------------------
+
+
+def test_output_name_eeprom_addr_first_slot():
+    assert output_name_eeprom_addr(0, 0) == 128
+
+
+def test_output_name_eeprom_addr_formula():
+    assert output_name_eeprom_addr(2, 5) == 128 + 2 * 384 + 5 * 32
+
+
+def test_output_name_eeprom_addr_matches_intro():
+    """Address from the helper must match the intro builder."""
+    for m in range(3):
+        for o in range(12):
+            addr = output_name_eeprom_addr(m, o)
+            intro = build_output_name_intro(m, o)
+            assert intro[4] == addr >> 8
+            assert intro[5] == addr & 0xFF

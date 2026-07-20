@@ -8,7 +8,7 @@ from typing import Any
 from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.core import HomeAssistant
 
-from .const import CONF_MAX200_HOST, SUBENTRY_TYPE_MODULE
+from .const import CONF_MASTER_DEVICE, SUBENTRY_TYPE_MODULE
 from .controller import SocketcandConnection
 from .coordinator import DobissConfigEntry
 
@@ -57,10 +57,10 @@ async def async_get_config_entry_diagnostics(
         }
         redact_fields = {"device"}
 
-    max200_host = entry.data.get(CONF_MAX200_HOST)
-    if max200_host:
-        connection_info["max200_host"] = max200_host
-        redact_fields = redact_fields | {"max200_host"}
+    master_device = entry.data.get(CONF_MASTER_DEVICE)
+    if master_device:
+        connection_info["master_device"] = master_device
+        redact_fields = redact_fields | {"master_device"}
 
     raw: dict[str, Any] = {
         "connection": connection_info,
@@ -69,6 +69,7 @@ async def async_get_config_entry_diagnostics(
             "lights": [list(k) for k in ctrl.lights],
             "dimmers": [list(k) for k in ctrl.dimmers],
             "shutters": [asdict(s) for s in ctrl.shutters],
+            "switches": [list(k) for k in ctrl.switches],
             "reconnect_count": ctrl.reconnect_count,
             "is_bus_connected": ctrl.is_bus_connected,
         },

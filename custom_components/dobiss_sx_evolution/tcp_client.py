@@ -28,9 +28,7 @@ class Max200TcpClient:
     def host(self) -> str:
         return self._host
 
-    async def send_command(
-        self, intro: bytes, output: bytes | None = None
-    ) -> None:
+    async def send_command(self, intro: bytes, output: bytes | None = None) -> None:
         """Fire-and-forget: send intro + optional output, then close."""
         try:
             _reader, writer = await asyncio.wait_for(
