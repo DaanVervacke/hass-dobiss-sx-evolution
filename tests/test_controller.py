@@ -125,6 +125,35 @@ async def test_setup_notifier_noop_when_bus_is_none(hass: HomeAssistant) -> None
     assert ctrl._notifier is None
 
 
+async def test_setup_notifier_tears_down_existing(hass: HomeAssistant) -> None:
+    """Calling _setup_notifier when one already exists tears down the old one first."""
+    import can as _can  # noqa: PLC0415
+
+    ctrl = _make_controller(hass)
+    ctrl._bus = MagicMock()
+
+    stop_calls: list = []
+    old_notifier = MagicMock()
+    old_notifier.stop = MagicMock(side_effect=lambda: stop_calls.append(1))
+    old_reader = MagicMock()
+    ctrl._notifier = old_notifier
+    ctrl._reader = old_reader
+
+    new_reader = MagicMock()
+    new_notifier = MagicMock()
+    with (
+        patch.object(_can, "AsyncBufferedReader", return_value=new_reader),
+        patch.object(_can, "Notifier", return_value=new_notifier),
+    ):
+        await ctrl._setup_notifier()
+
+    # Old notifier was stopped via executor.
+    assert stop_calls == [1], "old notifier.stop() must be called exactly once"
+    # New notifier is set.
+    assert ctrl._notifier is new_notifier
+    assert ctrl._reader is new_reader
+
+
 async def test_teardown_notifier_calls_stop_via_executor(hass: HomeAssistant) -> None:
     """_teardown_notifier must stop the notifier off the event loop thread."""
     ctrl = _make_controller(hass)

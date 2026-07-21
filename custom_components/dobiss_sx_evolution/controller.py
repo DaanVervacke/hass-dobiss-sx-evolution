@@ -273,6 +273,8 @@ class DobissController:
 
         if self._bus is None:
             return
+        if self._notifier is not None:
+            await self._teardown_notifier()
         reader = can.AsyncBufferedReader()
         notifier = can.Notifier(
             self._bus,
