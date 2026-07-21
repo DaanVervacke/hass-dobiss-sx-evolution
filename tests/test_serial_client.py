@@ -196,47 +196,12 @@ def test_download_config(mock_serial_cls, _mock_sleep):
 
 @patch("custom_components.dobiss_sx_evolution.serial_client.time.sleep")
 @patch("custom_components.dobiss_sx_evolution.serial_client.serial.Serial")
-def test_download_output_name(mock_serial_cls, _mock_sleep):
-    name_data = bytearray(32)
-    name_bytes = b"Kitchen ceiling"
-    name_data[: len(name_bytes)] = name_bytes
-
-    port = _mock_port(echo_byte=ord("u"), read_data=bytes(name_data))
-    mock_serial_cls.return_value = port
-
-    client = Max200SerialClient("/dev/ttyUSB1")
-    result = client.download_output_name(0, 0)
-
-    assert result == "Kitchen ceiling"
-    port.write.assert_any_call(b"u1")
-    port.close.assert_called_once()
-
-
-@patch("custom_components.dobiss_sx_evolution.serial_client.time.sleep")
-@patch("custom_components.dobiss_sx_evolution.serial_client.serial.Serial")
-def test_download_output_name_eeprom_address(mock_serial_cls, _mock_sleep):
-    """Verify the EEPROM address bytes sent in WriteControlByte."""
-    name_data = bytearray(32)
-    name_data[:4] = b"Test"
-    port = _mock_port(echo_byte=ord("u"), read_data=bytes(name_data))
-    mock_serial_cls.return_value = port
-
-    client = Max200SerialClient("/dev/ttyUSB1")
-    client.download_output_name(2, 5)
-
-    addr = 0x8000 + 2 * 384 + 5 * 32
-    base_call = port.write.call_args_list[1]
-    assert base_call[0][0] == bytes([0xA0])
-    addr_call = port.write.call_args_list[2]
-    assert addr_call[0][0][0] == addr >> 8
-    assert addr_call[0][0][1] == addr & 0xFF
-    port.close.assert_called_once()
-
-
-@patch("custom_components.dobiss_sx_evolution.serial_client.time.sleep")
-@patch("custom_components.dobiss_sx_evolution.serial_client.serial.Serial")
 def test_download_module_output_names(mock_serial_cls, _mock_sleep):
-    """Batch download reads all outputs in one connection."""
+    """Batch download reads all outputs in one connection.
+
+    Uses a nonzero module index so the EEPROM address bytes sent in
+    WriteControlByte (verified below) exercise the addr_hi/addr_lo split.
+    """
     name0 = bytearray(32)
     name0[:4] = b"Lamp"
     name1 = bytearray(32)
@@ -257,12 +222,21 @@ def test_download_module_output_names(mock_serial_cls, _mock_sleep):
     port.close = MagicMock()
     mock_serial_cls.return_value = port
 
+    module_index = 2
     client = Max200SerialClient("/dev/ttyUSB1")
-    result = client.download_module_output_names(0, 3)
+    result = client.download_module_output_names(module_index, 3)
 
     assert result == {0: "Lamp", 2: "Switch"}
     port.write.assert_any_call(b"u1")
     port.close.assert_called_once()
+
+    for output_index in range(3):
+        addr = 0x8000 + module_index * 384 + output_index * 32
+        base_call = port.write.call_args_list[1 + output_index * 2]
+        assert base_call[0][0] == bytes([0xA0])
+        addr_call = port.write.call_args_list[2 + output_index * 2]
+        assert addr_call[0][0][0] == addr >> 8
+        assert addr_call[0][0][1] == addr & 0xFF
 
 
 @patch("custom_components.dobiss_sx_evolution.serial_client.time.sleep")

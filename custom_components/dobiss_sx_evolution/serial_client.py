@@ -22,6 +22,9 @@ from .const import (
 )
 from .protocol import (
     CONFIG_RESPONSE_SIZE,
+    EEPROM_BASE_BYTE,
+    EEPROM_READ_DIRECTION,
+    EEPROM_READ_RECORD_SIZE,
     OUTPUT_NAME_RESPONSE_SIZE,
     output_name_eeprom_addr,
     parse_config_response,
@@ -121,22 +124,16 @@ class Max200SerialClient:
         port = self._open()
         try:
             self._handshake(port, "a0")
-            self._write_control_byte(port, 0xA0, 0, 0, 0, 3)
+            self._write_control_byte(
+                port,
+                EEPROM_BASE_BYTE,
+                0,
+                0,
+                EEPROM_READ_RECORD_SIZE,
+                EEPROM_READ_DIRECTION,
+            )
             data = port.read(CONFIG_RESPONSE_SIZE)
             return parse_config_response(data)
-        finally:
-            port.close()
-
-    def download_output_name(self, module_index: int, output_index: int) -> str | None:
-        """u1 output name download. Blocking."""
-        addr = output_name_eeprom_addr(module_index, output_index)
-        time.sleep(SERIAL_SETTLE_BEFORE_OPEN_S)
-        port = self._open()
-        try:
-            self._handshake(port, "u1")
-            self._write_control_byte(port, 0xA0, addr >> 8, addr & 0xFF, 0, 3)
-            data = port.read(OUTPUT_NAME_RESPONSE_SIZE)
-            return parse_output_name(data)
         finally:
             port.close()
 
@@ -154,7 +151,14 @@ class Max200SerialClient:
             names: dict[int, str] = {}
             for output_index in range(count):
                 addr = output_name_eeprom_addr(module_index, output_index)
-                self._write_control_byte(port, 0xA0, addr >> 8, addr & 0xFF, 0, 3)
+                self._write_control_byte(
+                    port,
+                    EEPROM_BASE_BYTE,
+                    addr >> 8,
+                    addr & 0xFF,
+                    EEPROM_READ_RECORD_SIZE,
+                    EEPROM_READ_DIRECTION,
+                )
                 data = port.read(OUTPUT_NAME_RESPONSE_SIZE)
                 name = parse_output_name(data)
                 if name is not None:

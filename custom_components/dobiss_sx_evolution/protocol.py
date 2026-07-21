@@ -110,7 +110,7 @@ def build_config_download_intro() -> bytes:
     intro[0] = 0xED
     intro[1] = 0x61  # 'a'
     intro[2] = 0x30  # '0'
-    intro[3] = 0xA0
+    intro[3] = EEPROM_BASE_BYTE
     return bytes(intro)
 
 
@@ -153,7 +153,7 @@ def build_output_name_intro(module_index: int, output_index: int) -> bytes:
     intro[0] = 0xED
     intro[1] = 0x75  # 'u'
     intro[2] = 0x31  # '1'
-    intro[3] = 0xA0
+    intro[3] = EEPROM_BASE_BYTE
     intro[4] = addr >> 8
     intro[5] = addr & 0xFF
     return bytes(intro)
@@ -173,6 +173,10 @@ def parse_output_name(data: bytes) -> str | None:
     name = "".join(chr(b) for b in raw if 0x20 <= b <= 0x7E).strip()
     return name or None
 
+
+EEPROM_BASE_BYTE = 0xA0
+EEPROM_READ_RECORD_SIZE = 0
+EEPROM_READ_DIRECTION = 3
 
 MOOD_ADDRESS_BYTE = 0x53
 
