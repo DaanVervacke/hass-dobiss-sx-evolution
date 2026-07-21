@@ -29,7 +29,9 @@ and switch entities.
 - [Configuration](#configuration)
   - [Connection setup](#connection-setup)
   - [Adding modules](#adding-modules)
+  - [Importing modules from the Max200](#importing-modules-from-the-max200)
   - [Configuring outputs](#configuring-outputs)
+  - [Adding moods](#adding-moods)
   - [Reconfiguring the connection](#reconfiguring-the-connection)
 - [Services](#services)
 - [Known limitations](#known-limitations)
@@ -43,11 +45,13 @@ and switch entities.
 - Light entities for on/off and dimmable outputs
 - Cover entities for shutter outputs (open, close, stop)
 - Switch entities for generic on/off relay outputs
+- Scene entities for DOBISS moods (sferen)
 - Diagnostic sensors for bus connection status and reconnect count
 - Reconnects automatically with exponential backoff. Raises a repair issue if the bus stays down
 - Requests a full state dump on startup and after each reconnect
 - `dobiss_sx_evolution.refresh` service to trigger a manual state resync
 - Works with both socketcand (TCP) and USB CAN adapters (slcan)
+- Optional Max200 link over TCP or serial for automatic module import and clock sync
 
 ## Entities
 
@@ -66,6 +70,12 @@ outputs (up and down). The bus does not report position, so covers use
 
 One `switch` entity per configured switch output. Use this for generic
 on/off relays that are not lights or shutters.
+
+### Scenes
+
+One `scene` entity per configured DOBISS mood (sferen). Activating it sends
+the mood command on the CAN bus. Mood entities are attached to the hub
+device.
 
 ### Diagnostic sensors
 
@@ -167,12 +177,16 @@ on the first step.
 | Host | *required* | Hostname or IP address of the `socketcand` daemon |
 | Port | `29536` | TCP port the daemon listens on |
 | Remote CAN interface | `can0` | CAN interface name as configured in `socketcand` |
+| Max200 (DO5120) serial port | *optional* | Serial port of the Max200 master module (SX-kabel). Optional, enables clock sync and module import |
+| Max200 (DO5120) TCP host | *optional* | Hostname or IP address of the Max200 master module. Optional, enables clock sync and module import |
 
 **USB CAN adapter**
 
 | Field | Default | Description |
 |---|---|---|
 | Device | *required* | Serial device path, picked from a dropdown of detected ports (e.g. `/dev/ttyACM0`, `/dev/serial/by-id/...`) |
+| Max200 (DO5120) serial port | *optional* | Serial port of the Max200 master module (SX-kabel). Optional, enables clock sync and module import |
+| Max200 (DO5120) TCP host | *optional* | Hostname or IP address of the Max200 master module. Optional, enables clock sync and module import |
 
 The adapter is opened as an `slcan` bus at 115200 baud. The bus itself runs
 at 125 kbit/s (the Max200 line speed).
@@ -192,18 +206,48 @@ services** and click **Add module**.
 | Module name | No | Friendly name, defaults to `Module <letter>` |
 | Dimmable | No | Enable for dimmer modules. Applies brightness support to every light on this module |
 
+### Importing modules from the Max200
+
+When a Max200 serial port or TCP host is configured, the DOBISS SX
+Evolution card offers an **Import modules from Max200** menu entry. It
+downloads the module list and output names from the controller and
+creates module subentries for any modules that are not already
+configured. Imported outputs default to type light. Adjust the type
+afterwards with **Change output type**.
+
+Configuring either the serial port or the TCP host also enables clock
+sync: Home Assistant syncs the controller clock every 4 hours. If both
+are configured, the TCP connection is preferred.
+
 ### Configuring outputs
 
 From each module's **Reconfigure** menu you can manage outputs:
 
 - **Add light**: output number and an optional friendly name
 - **Add shutter**: up-output number, down-output number and an optional friendly name
-- **Remove output**: select an existing output to remove (only shown when the module has outputs)
 - **Add switch**: output number and an optional friendly name
+- **Change output type**: pick an existing output and change it between light, shutter, and switch (only shown when the module has outputs)
+- **Remove output**: select an existing output to remove (only shown when the module has outputs)
 - **Edit module**: change the module letter, friendly name, or dimmable flag
 
 Each output number can only be claimed once per module. For shutters, the
-up and down output numbers must be different and both unclaimed.
+up and down output numbers must be different and both unclaimed. When you
+change an output to a shutter, the selected output becomes the up output
+and you are asked for a down output. When you change a shutter to another
+type, only the up output carries over.
+
+### Adding moods
+
+Add one **Mood** subentry per DOBISS mood (sferen). Open the DOBISS SX
+Evolution card in **Settings** > **Devices & services** and click **Add
+mood**.
+
+| Field | Required | Description |
+|---|---|---|
+| Mood number | Yes | The mood number from MaxTool's Sferen tab (0-99). Each number can only be used once |
+| Friendly name | No | Optional descriptive name, e.g. "All lights off" or "Coming home" |
+
+The mood appears as a `scene` entity once added.
 
 ### Reconfiguring the connection
 

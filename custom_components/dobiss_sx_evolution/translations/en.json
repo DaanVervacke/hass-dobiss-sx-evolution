@@ -179,6 +179,9 @@
       "error": {
         "mood_number_out_of_range": "Mood number must be between 0 and 99.",
         "mood_already_exists": "A mood with that number already exists."
+      },
+      "abort": {
+        "reconfigure_successful": "Mood updated."
       }
     },
     "module": {
