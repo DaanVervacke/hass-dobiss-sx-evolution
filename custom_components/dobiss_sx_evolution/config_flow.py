@@ -45,7 +45,7 @@ from .const import (
     SUBENTRY_TYPE_MOOD,
 )
 from .controller import ConnectionConfig, SocketcandConnection, UsbConnection
-from .protocol import _OUTPUTS_PER_MODULE
+from .protocol import OUTPUTS_PER_MODULE
 from .serial_client import Max200SerialClient
 
 _LOGGER = logging.getLogger(__name__)
@@ -672,7 +672,7 @@ class ModuleSubentryFlowHandler(ConfigSubentryFlow):
             output: int = user_input["output"]
             name: str = user_input.get(CONF_NAME, "").strip()
 
-            if output < 1 or output > 12:
+            if output < 1 or output > OUTPUTS_PER_MODULE:
                 errors["output"] = "invalid_output"
             else:
                 outputs: dict[str, Any] = dict(subentry.data.get("outputs", {}))
@@ -719,9 +719,9 @@ class ModuleSubentryFlowHandler(ConfigSubentryFlow):
             down_output: int = user_input["down_output"]
             name: str = user_input.get(CONF_NAME, "").strip()
 
-            if up_output < 1 or up_output > 12:
+            if up_output < 1 or up_output > OUTPUTS_PER_MODULE:
                 errors["up_output"] = "invalid_output"
-            elif down_output < 1 or down_output > 12:
+            elif down_output < 1 or down_output > OUTPUTS_PER_MODULE:
                 errors["down_output"] = "invalid_output"
             elif up_output == down_output:
                 errors["base"] = "same_output"
@@ -775,7 +775,7 @@ class ModuleSubentryFlowHandler(ConfigSubentryFlow):
             output: int = user_input["output"]
             name: str = user_input.get(CONF_NAME, "").strip()
 
-            if output < 1 or output > 12:
+            if output < 1 or output > OUTPUTS_PER_MODULE:
                 errors["output"] = "invalid_output"
             else:
                 outputs: dict[str, Any] = dict(subentry.data.get("outputs", {}))
@@ -953,7 +953,7 @@ class ModuleImportSubentryFlowHandler(ConfigSubentryFlow):
         imported = 0
         for letter, module_index in new_modules:
             outputs: dict[str, dict[str, str]] = {}
-            for output_index in range(_OUTPUTS_PER_MODULE):
+            for output_index in range(OUTPUTS_PER_MODULE):
                 try:
                     name = await self.hass.async_add_executor_job(
                         client.download_output_name,

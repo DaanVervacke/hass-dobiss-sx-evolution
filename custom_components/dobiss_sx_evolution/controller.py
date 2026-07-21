@@ -28,8 +28,8 @@ from .const import (
     MAX_CAN_BRIGHTNESS_TX,
 )
 from .protocol import (
-    _OUTPUTS_PER_MODULE,
     DUMP_REQUEST_FRAME,
+    OUTPUTS_PER_MODULE,
     StateUpdate,
     build_mood_frame,
     build_state_frame,
@@ -660,7 +660,7 @@ class DobissController:
         update = parse_state_frame(bytes(msg.data))
         if update is None or update.module not in self.modules:
             return None
-        if update.output < 1 or update.output > _OUTPUTS_PER_MODULE:
+        if update.output < 1 or update.output > OUTPUTS_PER_MODULE:
             return None
         # Signal the frame arrival BEFORE the state-match filter so a refresh
         # waiter can settle even when the fresh dump matches the cache.
