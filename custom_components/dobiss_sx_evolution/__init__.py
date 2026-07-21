@@ -7,10 +7,11 @@ from collections.abc import Callable, Coroutine
 from typing import Any
 
 import voluptuous as vol
-from homeassistant.config_entries import ConfigEntryState
+from homeassistant.config_entries import ConfigEntryState, ConfigSubentry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 
 from .const import (
     CONF_CONNECTION_TYPE,
@@ -148,6 +149,57 @@ def _module_config(entry: DobissConfigEntry) -> frozenset[tuple[str, bool]]:
     )
 
 
+def _expected_unique_ids(subentry: ConfigSubentry) -> set[str]:
+    """Return the unique_ids the platforms will create for this subentry.
+
+    Mirrors the platform_key formats built by light.py:74 (f"light_{output}"),
+    switch.py:63 (f"switch_{output}"), and cover.py:85 (f"cover_{up}"). Any
+    change to those formats MUST be reflected here or stale-entity pruning
+    will misfire.
+    """
+    expected: set[str] = set()
+    for output_str, cfg in subentry.data.get("outputs", {}).items():
+        kind = cfg.get("type")
+        if kind == "light":
+            expected.add(f"{subentry.subentry_id}-light_{output_str}")
+        elif kind == "switch":
+            expected.add(f"{subentry.subentry_id}-switch_{output_str}")
+        elif kind == "shutter":
+            expected.add(f"{subentry.subentry_id}-cover_{output_str}")
+    return expected
+
+
+def _prune_stale_entities(
+    hass: HomeAssistant, updated_entry: DobissConfigEntry
+) -> None:
+    """Remove registry entities for outputs that no longer exist or changed type.
+
+    Entity unique_ids are type-scoped, so removing an output or changing its
+    type (e.g. light -> switch) leaves the old entity as an unavailable
+    orphan unless it is explicitly removed here. Only entities belonging to
+    a MODULE subentry of this config entry are ever touched; mood (scene)
+    subentries and hub diagnostic entities are excluded.
+    """
+    entity_registry = er.async_get(hass)
+    module_sub_ids = {
+        sub.subentry_id
+        for sub in updated_entry.subentries.values()
+        if sub.subentry_type == SUBENTRY_TYPE_MODULE
+    }
+    expected: set[str] = set()
+    for sub in updated_entry.subentries.values():
+        if sub.subentry_type == SUBENTRY_TYPE_MODULE:
+            expected |= _expected_unique_ids(sub)
+    for reg_entry in er.async_entries_for_config_entry(
+        entity_registry, updated_entry.entry_id
+    ):
+        if (
+            reg_entry.config_subentry_id in module_sub_ids
+            and reg_entry.unique_id not in expected
+        ):
+            entity_registry.async_remove(reg_entry.entity_id)
+
+
 def _make_reload_listener(
     entry: DobissConfigEntry,
 ) -> Callable[[HomeAssistant, DobissConfigEntry], Coroutine[Any, Any, None]]:
@@ -191,6 +243,10 @@ def _make_reload_listener(
             )
             prev_conn = new_conn
             prev_modules = new_modules
+            # A module removal or dimmable-flag toggle can also carry output
+            # changes (the diff is per-subentry, not per-field), so prune
+            # here too before the reload re-creates platforms.
+            _prune_stale_entities(hass, updated_entry)
             await hass.config_entries.async_reload(updated_entry.entry_id)
             return
 
@@ -227,6 +283,11 @@ def _make_reload_listener(
             device = device_registry.async_get_device(identifiers={identifier})
             if device is not None and device.name != sub.title:
                 device_registry.async_update_device(device.id, name=sub.title)
+
+        # Prune registry entities for outputs that were removed or retyped
+        # before platforms are re-forwarded, so the old unique_id is free to
+        # be re-created under a different platform if the type changed.
+        _prune_stale_entities(hass, updated_entry)
 
         await hass.config_entries.async_unload_platforms(updated_entry, PLATFORMS)
         await hass.config_entries.async_forward_entry_setups(updated_entry, PLATFORMS)

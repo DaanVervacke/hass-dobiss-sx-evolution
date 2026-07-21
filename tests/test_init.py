@@ -18,6 +18,7 @@ from custom_components.dobiss_sx_evolution.const import (
     CONNECTION_TYPE_SOCKETCAND,
     DOMAIN,
     SUBENTRY_TYPE_MODULE,
+    SUBENTRY_TYPE_MOOD,
 )
 
 from .conftest import MOCK_CONFIG
@@ -541,6 +542,263 @@ async def test_remove_device_blocks_hub_device(
 # ---------------------------------------------------------------------------
 # Refresh service tests
 # ---------------------------------------------------------------------------
+
+
+def _make_mood_subentry_data(mood_number: int = 0, title: str = "Mood One") -> dict:
+    """Return a minimal subentry_data dict for one mood (scene)."""
+    return {
+        "subentry_type": SUBENTRY_TYPE_MOOD,
+        "title": title,
+        "unique_id": f"mood:{mood_number}",
+        "data": {"mood_number": mood_number},
+    }
+
+
+async def test_prune_removes_stale_entity_on_output_retype(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """Retyping an output from light to switch must remove the stale light entity."""
+    from homeassistant.helpers import entity_registry as er  # noqa: PLC0415
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=_make_entry_data(),
+        title="DOBISS",
+        version=1,
+        subentries_data=[
+            _make_subentry_data("A", {"3": {"type": "light", "name": "L3"}})
+        ],
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    entity_registry = er.async_get(hass)
+    module_sub = next(
+        sub for sub in entry.subentries.values() if sub.subentry_type == "module"
+    )
+    light_unique_id = f"{module_sub.subentry_id}-light_3"
+    switch_unique_id = f"{module_sub.subentry_id}-switch_3"
+    assert entity_registry.async_get_entity_id("light", DOMAIN, light_unique_id)
+
+    hass.config_entries.async_update_subentry(
+        entry,
+        module_sub,
+        data={
+            "module": "A",
+            "dimmable": False,
+            "outputs": {"3": {"type": "switch", "name": "L3"}},
+        },
+    )
+    await hass.async_block_till_done()
+
+    assert entity_registry.async_get_entity_id("light", DOMAIN, light_unique_id) is None
+    assert (
+        entity_registry.async_get_entity_id("switch", DOMAIN, switch_unique_id)
+        is not None
+    )
+
+
+async def test_prune_removes_entity_on_output_removal(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """Deleting an output entirely must remove its entity, with no replacement."""
+    from homeassistant.helpers import entity_registry as er  # noqa: PLC0415
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=_make_entry_data(),
+        title="DOBISS",
+        version=1,
+        subentries_data=[
+            _make_subentry_data("A", {"3": {"type": "light", "name": "L3"}})
+        ],
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    entity_registry = er.async_get(hass)
+    module_sub = next(
+        sub for sub in entry.subentries.values() if sub.subentry_type == "module"
+    )
+    light_unique_id = f"{module_sub.subentry_id}-light_3"
+    assert entity_registry.async_get_entity_id("light", DOMAIN, light_unique_id)
+
+    hass.config_entries.async_update_subentry(
+        entry,
+        module_sub,
+        data={"module": "A", "dimmable": False, "outputs": {}},
+    )
+    await hass.async_block_till_done()
+
+    assert entity_registry.async_get_entity_id("light", DOMAIN, light_unique_id) is None
+
+
+async def test_prune_removes_entity_on_shutter_retype(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """Converting a shutter output to a light must remove the stale cover entity."""
+    from homeassistant.helpers import entity_registry as er  # noqa: PLC0415
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=_make_entry_data(),
+        title="DOBISS",
+        version=1,
+        subentries_data=[
+            _make_subentry_data(
+                "A",
+                {"1": {"type": "shutter", "down_output": 2, "name": "Shutter 1"}},
+            )
+        ],
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    entity_registry = er.async_get(hass)
+    module_sub = next(
+        sub for sub in entry.subentries.values() if sub.subentry_type == "module"
+    )
+    cover_unique_id = f"{module_sub.subentry_id}-cover_1"
+    light_unique_id = f"{module_sub.subentry_id}-light_1"
+    assert entity_registry.async_get_entity_id("cover", DOMAIN, cover_unique_id)
+
+    hass.config_entries.async_update_subentry(
+        entry,
+        module_sub,
+        data={
+            "module": "A",
+            "dimmable": False,
+            "outputs": {"1": {"type": "light", "name": "Output 1"}},
+        },
+    )
+    await hass.async_block_till_done()
+
+    assert entity_registry.async_get_entity_id("cover", DOMAIN, cover_unique_id) is None
+    assert (
+        entity_registry.async_get_entity_id("light", DOMAIN, light_unique_id)
+        is not None
+    )
+
+
+async def test_prune_leaves_scene_and_diagnostic_entities_untouched(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """Mood scenes and hub diagnostic entities must survive output-only pruning."""
+    from homeassistant.helpers import entity_registry as er  # noqa: PLC0415
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=_make_entry_data(),
+        title="DOBISS",
+        version=1,
+        subentries_data=[
+            _make_subentry_data("A", {"3": {"type": "light", "name": "L3"}}),
+            _make_mood_subentry_data(0, "Movie Night"),
+        ],
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    entity_registry = er.async_get(hass)
+    module_sub = next(
+        sub for sub in entry.subentries.values() if sub.subentry_type == "module"
+    )
+    mood_sub = next(
+        sub
+        for sub in entry.subentries.values()
+        if sub.subentry_type == SUBENTRY_TYPE_MOOD
+    )
+    scene_unique_id = f"{mood_sub.subentry_id}-mood"
+    bus_sensor_unique_id = f"{entry.entry_id}_bus_connected"
+
+    scene_entity_id = entity_registry.async_get_entity_id(
+        "scene", DOMAIN, scene_unique_id
+    )
+    bus_sensor_entity_id = entity_registry.async_get_entity_id(
+        "binary_sensor", DOMAIN, bus_sensor_unique_id
+    )
+    assert scene_entity_id is not None
+    assert bus_sensor_entity_id is not None
+
+    hass.config_entries.async_update_subentry(
+        entry,
+        module_sub,
+        data={
+            "module": "A",
+            "dimmable": False,
+            "outputs": {"3": {"type": "switch", "name": "L3"}},
+        },
+    )
+    await hass.async_block_till_done()
+
+    # Untouched: same entity_id still resolves for both.
+    assert (
+        entity_registry.async_get_entity_id("scene", DOMAIN, scene_unique_id)
+        == scene_entity_id
+    )
+    assert (
+        entity_registry.async_get_entity_id(
+            "binary_sensor", DOMAIN, bus_sensor_unique_id
+        )
+        == bus_sensor_entity_id
+    )
+
+
+async def test_prune_runs_before_full_reload_on_dimmable_toggle(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """A dimmable toggle (full reload) that also drops an output must still prune it.
+
+    Dimmable changes go through the full-reload branch, not the output-only
+    fast path, so pruning must happen there too.
+    """
+    from homeassistant.helpers import entity_registry as er  # noqa: PLC0415
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=_make_entry_data(),
+        title="DOBISS",
+        version=1,
+        subentries_data=[
+            _make_subentry_data(
+                "A",
+                {
+                    "1": {"type": "light", "name": "L1"},
+                    "2": {"type": "light", "name": "L2"},
+                },
+            )
+        ],
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    entity_registry = er.async_get(hass)
+    module_sub = next(
+        sub for sub in entry.subentries.values() if sub.subentry_type == "module"
+    )
+    output2_unique_id = f"{module_sub.subentry_id}-light_2"
+    assert entity_registry.async_get_entity_id("light", DOMAIN, output2_unique_id)
+
+    # Toggle dimmable AND drop output 2 in the same update.
+    hass.config_entries.async_update_subentry(
+        entry,
+        module_sub,
+        data={
+            "module": "A",
+            "dimmable": True,
+            "outputs": {"1": {"type": "light", "name": "L1"}},
+        },
+    )
+    await hass.async_block_till_done()
+
+    assert (
+        entity_registry.async_get_entity_id("light", DOMAIN, output2_unique_id) is None
+    )
 
 
 async def test_refresh_service_calls_dump(hass: HomeAssistant, mock_controller) -> None:
