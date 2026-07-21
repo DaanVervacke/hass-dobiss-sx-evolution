@@ -2480,18 +2480,15 @@ async def test_import_via_tcp_creates_subentries(
     entry = await _setup_entry_with_max200_host(hass, mock_controller)
 
     modules = [("A", 0)]
-    output_names = {(0, 0): "Kitchen"}
-
-    def mock_download_output_name(mod_idx, out_idx):
-        return output_names.get((mod_idx, out_idx))
+    module_names = {0: {0: "Kitchen"}}
 
     with patch(
         "custom_components.dobiss_sx_evolution.config_flow.Max200TcpClient"
     ) as mock_client_cls:
         mock_client = mock_client_cls.return_value
         mock_client.download_config = AsyncMock(return_value=modules)
-        mock_client.download_output_name = AsyncMock(
-            side_effect=mock_download_output_name
+        mock_client.download_module_output_names = AsyncMock(
+            side_effect=lambda mod_idx, count: module_names.get(mod_idx, {})
         )
 
         result = await hass.config_entries.subentries.async_init(
@@ -2536,6 +2533,39 @@ async def test_import_via_tcp_failure_aborts(
     assert result["reason"] == "import_failed"
 
 
+async def test_import_via_tcp_continues_on_name_failure(
+    hass: HomeAssistant, mock_controller, mock_coordinator_tcp
+) -> None:
+    """Import continues when download_module_output_names fails over TCP."""
+    entry = await _setup_entry_with_max200_host(hass, mock_controller)
+
+    with patch(
+        "custom_components.dobiss_sx_evolution.config_flow.Max200TcpClient"
+    ) as mock_client_cls:
+        mock_client = mock_client_cls.return_value
+        mock_client.download_config = AsyncMock(return_value=[("A", 0)])
+        mock_client.download_module_output_names = AsyncMock(
+            side_effect=ConnectionError("boom")
+        )
+
+        result = await hass.config_entries.subentries.async_init(
+            (entry.entry_id, SUBENTRY_TYPE_MODULE_IMPORT),
+            context={"source": "user"},
+        )
+
+    assert result["type"] == FlowResultType.ABORT
+    assert result["reason"] == "import_successful"
+
+    module_subs = [
+        sub
+        for sub in entry.subentries.values()
+        if sub.subentry_type == SUBENTRY_TYPE_MODULE
+    ]
+    assert len(module_subs) == 1
+    outputs = module_subs[0].data["outputs"]
+    assert outputs == {}  # batch download failed, module created with no outputs
+
+
 async def test_import_prefers_tcp_over_serial(
     hass: HomeAssistant, mock_controller, mock_coordinator_tcp
 ) -> None:
@@ -2567,7 +2597,7 @@ async def test_import_prefers_tcp_over_serial(
     ):
         mock_tcp = mock_tcp_cls.return_value
         mock_tcp.download_config = AsyncMock(return_value=[("A", 0)])
-        mock_tcp.download_output_name = AsyncMock(return_value=None)
+        mock_tcp.download_module_output_names = AsyncMock(return_value={})
 
         result = await hass.config_entries.subentries.async_init(
             (entry.entry_id, SUBENTRY_TYPE_MODULE_IMPORT),

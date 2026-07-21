@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from custom_components.dobiss_sx_evolution.tcp_client import Max200TcpClient
 
 
@@ -166,3 +168,53 @@ async def test_send_command_writes_empty_bytes(mock_open) -> None:
 
     assert writer.write.call_count == 2
     assert writer.write.call_args_list[1][0][0] == b""
+
+
+async def test_download_module_output_names_delegates_per_record() -> None:
+    """download_module_output_names delegates to download_output_name per record."""
+    names = {0: "Kitchen", 1: "Living", 2: "Bedroom"}
+
+    async def fake_download(module_index: int, output_index: int) -> str | None:
+        assert module_index == 0
+        return names.get(output_index)
+
+    client = Max200TcpClient("10.0.0.1", 1001)
+    with patch.object(
+        client, "download_output_name", AsyncMock(side_effect=fake_download)
+    ) as mock_download:
+        result = await client.download_module_output_names(0, 3)
+
+    assert result == names
+    assert mock_download.await_count == 3
+
+
+async def test_download_module_output_names_omits_unconfigured() -> None:
+    """A record with byte 1 == 0xFF (unconfigured) is omitted from the result."""
+
+    async def fake_download(module_index: int, output_index: int) -> str | None:
+        if output_index == 1:
+            return None
+        return f"Output {output_index}"
+
+    client = Max200TcpClient("10.0.0.1", 1001)
+    with patch.object(
+        client, "download_output_name", AsyncMock(side_effect=fake_download)
+    ):
+        result = await client.download_module_output_names(0, 3)
+
+    assert 1 not in result
+    assert result == {0: "Output 0", 2: "Output 2"}
+
+
+async def test_download_module_output_names_propagates_connection_error() -> None:
+    """A connection error mid-batch propagates to the caller."""
+    client = Max200TcpClient("10.0.0.1", 1001)
+    with (
+        patch.object(
+            client,
+            "download_output_name",
+            AsyncMock(side_effect=ConnectionError("boom")),
+        ),
+        pytest.raises(ConnectionError, match="boom"),
+    ):
+        await client.download_module_output_names(0, 3)

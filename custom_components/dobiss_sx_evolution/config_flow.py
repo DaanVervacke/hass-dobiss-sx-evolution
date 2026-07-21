@@ -1123,17 +1123,10 @@ class ModuleImportSubentryFlowHandler(ConfigSubentryFlow):
             tcp_client = Max200TcpClient(max200_host)
             dl_config = tcp_client.download_config
 
-            async def _tcp_dl_names(module_index: int) -> dict[int, str]:
-                names: dict[int, str] = {}
-                for output_index in range(OUTPUTS_PER_MODULE):
-                    name = await tcp_client.download_output_name(
-                        module_index, output_index
-                    )
-                    if name is not None:
-                        names[output_index] = name
-                return names
-
-            dl_names = _tcp_dl_names
+            async def dl_names(module_index: int) -> dict[int, str]:
+                return await tcp_client.download_module_output_names(
+                    module_index, OUTPUTS_PER_MODULE
+                )
         else:
             assert master_device
             serial_client = Max200SerialClient(master_device)

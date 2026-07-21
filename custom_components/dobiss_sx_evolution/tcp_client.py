@@ -115,3 +115,27 @@ class Max200TcpClient:
             intro, response_size=OUTPUT_NAME_RESPONSE_SIZE
         )
         return parse_output_name(data)
+
+    async def download_module_output_names(
+        self, module_index: int, count: int
+    ) -> dict[int, str]:
+        """u1 batch output name download, connection per record.
+
+        MaxTool's own LAN client (IL-disassembled) never holds one socket
+        open across multiple separate intro/response exchanges: every LAN
+        command function does exactly one LanSendIntro + one Receive per
+        connect/close cycle. Its "u1" download in particular fetches a
+        whole module's 384-byte block (12 records) in a single exchange
+        rather than looping per output, which this client's per-output
+        framing (inherited from protocol.py) does not do. With no
+        confirmed precedent for reusing one socket across repeated
+        per-output exchanges, this reconnects per record. Revisit if
+        protocol.py grows a whole-module framing to match MaxTool's true
+        one-shot download.
+        """
+        names: dict[int, str] = {}
+        for output_index in range(count):
+            name = await self.download_output_name(module_index, output_index)
+            if name is not None:
+                names[output_index] = name
+        return names
