@@ -284,13 +284,11 @@
         },
         "edit_output_down": {
           "title": "Shutter outputs",
-          "description": "Shutters use two outputs on the same module: one drives the motor up and the other drives it down.",
+          "description": "The selected output drives the motor up. Enter the output wired to the motor's down direction.",
           "data": {
-            "up_output": "Up output",
             "down_output": "Down output"
           },
           "data_description": {
-            "up_output": "The output number wired to the motor's UP direction.",
             "down_output": "The output number wired to the motor's DOWN direction. Must differ from the up output."
           }
         },

@@ -627,6 +627,8 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
 class ModuleSubentryFlowHandler(ConfigSubentryFlow):
     """Handle subentry flow for adding and reconfiguring a DOBISS module."""
 
+    _edit_output_key: str | None = None
+
     # ------------------------------------------------------------------ #
     # Add flow                                                             #
     # ------------------------------------------------------------------ #
@@ -940,6 +942,8 @@ class ModuleSubentryFlowHandler(ConfigSubentryFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
         """Pick a new type for the selected output."""
+        if self._edit_output_key is None:
+            return self.async_abort(reason="no_outputs_to_edit")
         subentry = self._get_reconfigure_subentry()
         output_key: str = self._edit_output_key
         outputs: dict[str, Any] = dict(subentry.data.get("outputs", {}))
@@ -982,6 +986,8 @@ class ModuleSubentryFlowHandler(ConfigSubentryFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
         """Ask for the down output when changing to shutter."""
+        if self._edit_output_key is None:
+            return self.async_abort(reason="no_outputs_to_edit")
         errors: dict[str, str] = {}
         subentry = self._get_reconfigure_subentry()
         output_key: str = self._edit_output_key
@@ -995,9 +1001,14 @@ class ModuleSubentryFlowHandler(ConfigSubentryFlow):
                 errors["down_output"] = "invalid_output"
             elif down_output == up_output:
                 errors["base"] = "same_output"
+            else:
+                own_claims = {up_output}
+                if current_cfg.get("type") == "shutter":
+                    own_claims.add(int(current_cfg["down_output"]))
+                occupied = _occupied_outputs_in_module(outputs) - own_claims
+                if down_output in occupied:
+                    errors["down_output"] = "duplicate_output"
             if not errors:
-                # Remove existing entry on the down_output slot if present.
-                outputs.pop(str(down_output), None)
                 outputs[output_key] = {
                     "type": "shutter",
                     "down_output": down_output,
@@ -1015,7 +1026,6 @@ class ModuleSubentryFlowHandler(ConfigSubentryFlow):
         current_down = current_cfg.get("down_output", up_output + 1)
         schema = vol.Schema(
             {
-                vol.Required("up_output", default=up_output): int,
                 vol.Required(
                     "down_output",
                     default=defaults.get("down_output", current_down),

@@ -1562,7 +1562,7 @@ async def test_subentry_edit_output_light_to_shutter(
 
     result5 = await hass.config_entries.subentries.async_configure(
         result4["flow_id"],
-        user_input={"up_output": 1, "down_output": 2},
+        user_input={"down_output": 2},
     )
     assert result5["type"] == FlowResultType.ABORT
     assert result5["reason"] == "reconfigure_successful"
@@ -1674,31 +1674,169 @@ async def test_subentry_edit_output_shutter_invalid_down_output(
     # same output as up
     result5 = await hass.config_entries.subentries.async_configure(
         result4["flow_id"],
-        user_input={"up_output": 1, "down_output": 1},
+        user_input={"down_output": 1},
     )
     assert result5["type"] == FlowResultType.FORM
     assert result5["errors"]["base"] == "same_output"
 
-    # out of range
+    # out of range (below 1)
     result6 = await hass.config_entries.subentries.async_configure(
         result5["flow_id"],
-        user_input={"up_output": 1, "down_output": 0},
+        user_input={"down_output": 0},
     )
     assert result6["type"] == FlowResultType.FORM
     assert result6["errors"]["down_output"] == "invalid_output"
 
-    # occupied by another output -- auto-claimed, existing entry removed
-    result7 = await hass.config_entries.subentries.async_configure(
+    # out of range (above OUTPUTS_PER_MODULE)
+    result_high = await hass.config_entries.subentries.async_configure(
         result6["flow_id"],
-        user_input={"up_output": 1, "down_output": 3},
+        user_input={"down_output": 13},
     )
-    assert result7["type"] == FlowResultType.ABORT
-    assert result7["reason"] == "reconfigure_successful"
+    assert result_high["type"] == FlowResultType.FORM
+    assert result_high["errors"]["down_output"] == "invalid_output"
+
+    # occupied by another output -- rejected, existing entry untouched
+    result7 = await hass.config_entries.subentries.async_configure(
+        result_high["flow_id"],
+        user_input={"down_output": 3},
+    )
+    assert result7["type"] == FlowResultType.FORM
+    assert result7["errors"]["down_output"] == "duplicate_output"
+
+    sub = entry.subentries[sub_id]
+    assert sub.data["outputs"]["3"] == {"type": "light", "name": "L3"}
+
+    # finish with a valid, unclaimed down_output
+    result8 = await hass.config_entries.subentries.async_configure(
+        result7["flow_id"],
+        user_input={"down_output": 5},
+    )
+    assert result8["type"] == FlowResultType.ABORT
+    assert result8["reason"] == "reconfigure_successful"
 
     sub = entry.subentries[sub_id]
     assert sub.data["outputs"]["1"]["type"] == "shutter"
-    assert sub.data["outputs"]["1"]["down_output"] == 3
-    assert "3" not in sub.data["outputs"]
+    assert sub.data["outputs"]["1"]["down_output"] == 5
+    assert sub.data["outputs"]["3"] == {"type": "light", "name": "L3"}
+
+
+async def test_subentry_edit_output_shutter_down_collides_with_shutter_down(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """Choosing a down_output already used as another shutter's down errors."""
+    entry = await _setup_loaded_entry(
+        hass,
+        mock_controller,
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_MODULE,
+                "title": "Module A",
+                "unique_id": "module:A",
+                "data": {
+                    "module": "A",
+                    "dimmable": False,
+                    "outputs": {
+                        "1": {"type": "light", "name": "L1"},
+                        "2": {
+                            "type": "shutter",
+                            "down_output": 3,
+                            "name": "Blind",
+                        },
+                        "4": {"type": "light", "name": "L4"},
+                    },
+                },
+            }
+        ],
+    )
+    sub_id = next(iter(entry.subentries))
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_MODULE),
+        context={"source": "reconfigure", "subentry_id": sub_id},
+    )
+    result2 = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        user_input={"next_step_id": "edit_output"},
+    )
+    result3 = await hass.config_entries.subentries.async_configure(
+        result2["flow_id"],
+        user_input={"output": "4"},
+    )
+    result4 = await hass.config_entries.subentries.async_configure(
+        result3["flow_id"],
+        user_input={"type": "shutter"},
+    )
+    assert result4["type"] == FlowResultType.FORM
+    assert result4["step_id"] == "edit_output_down"
+
+    # down_output=3 is not a dict key, but it's shutter "2"'s down_output.
+    result5 = await hass.config_entries.subentries.async_configure(
+        result4["flow_id"],
+        user_input={"down_output": 3},
+    )
+    assert result5["type"] == FlowResultType.FORM
+    assert result5["errors"]["down_output"] == "duplicate_output"
+
+    sub = entry.subentries[sub_id]
+    assert sub.data["outputs"]["4"] == {"type": "light", "name": "L4"}
+
+
+async def test_subentry_edit_output_shutter_reselect_own_down_output(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """Re-selecting a shutter's existing own down_output succeeds."""
+    entry = await _setup_loaded_entry(
+        hass,
+        mock_controller,
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_MODULE,
+                "title": "Module A",
+                "unique_id": "module:A",
+                "data": {
+                    "module": "A",
+                    "dimmable": False,
+                    "outputs": {
+                        "1": {
+                            "type": "shutter",
+                            "down_output": 2,
+                            "name": "Blind",
+                        },
+                    },
+                },
+            }
+        ],
+    )
+    sub_id = next(iter(entry.subentries))
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_MODULE),
+        context={"source": "reconfigure", "subentry_id": sub_id},
+    )
+    result2 = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        user_input={"next_step_id": "edit_output"},
+    )
+    result3 = await hass.config_entries.subentries.async_configure(
+        result2["flow_id"],
+        user_input={"output": "1"},
+    )
+    result4 = await hass.config_entries.subentries.async_configure(
+        result3["flow_id"],
+        user_input={"type": "shutter"},
+    )
+    assert result4["type"] == FlowResultType.FORM
+    assert result4["step_id"] == "edit_output_down"
+
+    result5 = await hass.config_entries.subentries.async_configure(
+        result4["flow_id"],
+        user_input={"down_output": 2},
+    )
+    assert result5["type"] == FlowResultType.ABORT
+    assert result5["reason"] == "reconfigure_successful"
+
+    sub = entry.subentries[sub_id]
+    assert sub.data["outputs"]["1"]["down_output"] == 2
 
 
 async def test_subentry_edit_output_shutter_change_down_output(
@@ -1753,7 +1891,7 @@ async def test_subentry_edit_output_shutter_change_down_output(
     # Change down_output from 2 to 4 (2 was occupied, now freed)
     result5 = await hass.config_entries.subentries.async_configure(
         result4["flow_id"],
-        user_input={"up_output": 1, "down_output": 4},
+        user_input={"down_output": 4},
     )
     assert result5["type"] == FlowResultType.ABORT
     assert result5["reason"] == "reconfigure_successful"
