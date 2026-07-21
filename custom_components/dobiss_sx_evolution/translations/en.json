@@ -12,13 +12,15 @@
           "host": "socketcand host",
           "port": "socketcand port",
           "interface": "CAN interface",
-          "master_device": "Master module serial port"
+          "master_device": "Master module serial port",
+          "max200_host": "Max200 TCP host"
         },
         "data_description": {
           "host": "Hostname or IP address of the machine running socketcand. For example: 192.168.1.10 or homeserver.local.",
           "port": "TCP port socketcand is listening on. The default for this integration is 29536.",
           "interface": "Name of the CAN interface on the socketcand host. The default for this integration is can0.",
-          "master_device": "Serial port of the master module (SX-kabel via USB adapter). Optional, enables clock sync and module import."
+          "master_device": "Serial port of the master module (SX-kabel via USB adapter). Optional, enables clock sync and module import.",
+          "max200_host": "Hostname or IP address of the Max200 controller. Optional, enables clock sync and module import over TCP as alternative to the serial port."
         }
       },
       "reauth_socketcand": {
@@ -28,13 +30,15 @@
           "host": "socketcand host",
           "port": "socketcand port",
           "interface": "CAN interface",
-          "master_device": "Master module serial port"
+          "master_device": "Master module serial port",
+          "max200_host": "Max200 TCP host"
         },
         "data_description": {
           "host": "Hostname or IP address of the machine running socketcand.",
           "port": "TCP port socketcand is listening on (default 29536).",
           "interface": "Name of the CAN interface on the socketcand host (typically can0).",
-          "master_device": "Serial port of the master module (SX-kabel via USB adapter). Optional, enables clock sync and module import."
+          "master_device": "Serial port of the master module (SX-kabel via USB adapter). Optional, enables clock sync and module import.",
+          "max200_host": "Hostname or IP address of the Max200 controller. Optional, enables clock sync and module import over TCP as alternative to the serial port."
         }
       },
       "reauth_usb": {
@@ -42,11 +46,13 @@
         "description": "Home Assistant lost the connection. Confirm or update the USB CAN adapter details below.",
         "data": {
           "device": "Device path",
-          "master_device": "Master module serial port"
+          "master_device": "Master module serial port",
+          "max200_host": "Max200 TCP host"
         },
         "data_description": {
           "device": "Path to the serial device.",
-          "master_device": "Serial port of the master module (SX-kabel via USB adapter). Optional, enables clock sync and module import."
+          "master_device": "Serial port of the master module (SX-kabel via USB adapter). Optional, enables clock sync and module import.",
+          "max200_host": "Hostname or IP address of the Max200 controller. Optional, enables clock sync and module import over TCP as alternative to the serial port."
         }
       },
       "usb_manual": {
@@ -54,11 +60,13 @@
         "description": "Connect directly to a USB CAN adapter like Canable, Lawicel, or other compatible devices.",
         "data": {
           "device": "Device path",
-          "master_device": "Master module serial port"
+          "master_device": "Master module serial port",
+          "max200_host": "Max200 TCP host"
         },
         "data_description": {
           "device": "Path to the serial device. On Linux: /dev/ttyACM0, /dev/ttyUSB0. On Windows: COM3, COM4, etc.",
-          "master_device": "Serial port of the master module (SX-kabel via USB adapter). Optional, enables clock sync and module import."
+          "master_device": "Serial port of the master module (SX-kabel via USB adapter). Optional, enables clock sync and module import.",
+          "max200_host": "Hostname or IP address of the Max200 controller. Optional, enables clock sync and module import over TCP as alternative to the serial port."
         }
       },
       "reconfigure": {
@@ -78,13 +86,15 @@
           "host": "socketcand host",
           "port": "socketcand port",
           "interface": "CAN interface",
-          "master_device": "Master module serial port"
+          "master_device": "Master module serial port",
+          "max200_host": "Max200 TCP host"
         },
         "data_description": {
           "host": "Hostname or IP address of the machine running socketcand.",
           "port": "TCP port socketcand is listening on (default 29536).",
           "interface": "Name of the CAN interface on the socketcand host (typically can0).",
-          "master_device": "Serial port of the master module (SX-kabel via USB adapter). Optional, enables clock sync and module import."
+          "master_device": "Serial port of the master module (SX-kabel via USB adapter). Optional, enables clock sync and module import.",
+          "max200_host": "Hostname or IP address of the Max200 controller. Optional, enables clock sync and module import over TCP as alternative to the serial port."
         }
       },
       "reconfigure_usb": {
@@ -92,11 +102,13 @@
         "description": "Update the USB CAN adapter connection details for the DOBISS SX Evolution CAN bus.",
         "data": {
           "device": "Device path",
-          "master_device": "Master module serial port"
+          "master_device": "Master module serial port",
+          "max200_host": "Max200 TCP host"
         },
         "data_description": {
           "device": "Path to the serial device.",
-          "master_device": "Serial port of the master module (SX-kabel via USB adapter). Optional, enables clock sync and module import."
+          "master_device": "Serial port of the master module (SX-kabel via USB adapter). Optional, enables clock sync and module import.",
+          "max200_host": "Hostname or IP address of the Max200 controller. Optional, enables clock sync and module import over TCP as alternative to the serial port."
         }
       }
     },
@@ -129,9 +141,9 @@
       },
       "abort": {
         "import_successful": "Imported {count} new module(s) from the Max200.",
-        "import_failed": "Could not connect to the master module. Check the serial port and that the module is powered on.",
+        "import_failed": "Could not connect to the Max200. Check the serial port or TCP host and that the controller is powered on.",
         "no_new_modules": "All modules from the Max200 are already configured.",
-        "no_master_device": "No master module serial port configured. Add one in the connection settings first."
+        "no_max200_connection": "No Max200 connection configured. Set a TCP host or serial port in the connection settings."
       }
     },
     "mood": {

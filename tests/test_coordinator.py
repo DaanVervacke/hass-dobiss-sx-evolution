@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant.config_entries import ConfigEntryState
@@ -21,6 +21,7 @@ from custom_components.dobiss_sx_evolution.const import (
     CONF_CONNECTION_TYPE,
     CONF_DEVICE,
     CONF_MASTER_DEVICE,
+    CONF_MAX200_HOST,
     CONNECTION_TYPE_USB,
     DOMAIN,
     SUBENTRY_TYPE_MODULE,
@@ -427,6 +428,114 @@ async def test_coordinator_clock_sync_failure_logged(
         mock_serial = mock_serial_cls.return_value
         mock_serial.device = "/dev/ttyUSB1"
         mock_serial.sync_clock = MagicMock(side_effect=ConnectionError("device gone"))
+
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+        assert entry.state is ConfigEntryState.LOADED
+
+
+async def test_coordinator_creates_tcp_client_when_max200_host_set(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """Coordinator creates a tcp_client when max200_host is in entry data."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={**MOCK_CONFIG, CONF_MAX200_HOST: "10.0.0.2"},
+        title="DOBISS",
+    )
+    entry.add_to_hass(hass)
+    coordinator = DobissCoordinator(hass, entry)
+    assert coordinator.tcp_client is not None
+    assert coordinator.tcp_client.host == "10.0.0.2"
+
+
+async def test_coordinator_no_tcp_client_when_max200_host_absent(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """Coordinator has no tcp_client when max200_host is not configured."""
+    entry = _make_entry(hass)
+    coordinator = DobissCoordinator(hass, entry)
+    assert coordinator.tcp_client is None
+
+
+async def test_coordinator_clock_sync_via_tcp(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """Clock sync uses the TCP client when max200_host is configured."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=_make_entry_data(max200_host="10.0.0.2"),
+        title="DOBISS",
+        version=1,
+    )
+    entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.dobiss_sx_evolution.coordinator.Max200TcpClient"
+    ) as mock_tcp_cls:
+        mock_tcp = mock_tcp_cls.return_value
+        mock_tcp.host = "10.0.0.2"
+        mock_tcp.sync_clock = AsyncMock()
+
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+        mock_tcp.sync_clock.assert_awaited_once()
+
+
+async def test_coordinator_clock_sync_prefers_tcp_over_serial(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """When both max200_host and master_device are set, TCP takes priority."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=_make_entry_data(max200_host="10.0.0.2", master_device="/dev/ttyUSB1"),
+        title="DOBISS",
+        version=1,
+    )
+    entry.add_to_hass(hass)
+
+    with (
+        patch(
+            "custom_components.dobiss_sx_evolution.coordinator.Max200TcpClient"
+        ) as mock_tcp_cls,
+        patch(
+            "custom_components.dobiss_sx_evolution.coordinator.Max200SerialClient"
+        ) as mock_serial_cls,
+    ):
+        mock_tcp = mock_tcp_cls.return_value
+        mock_tcp.host = "10.0.0.2"
+        mock_tcp.sync_clock = AsyncMock()
+        mock_serial = mock_serial_cls.return_value
+        mock_serial.device = "/dev/ttyUSB1"
+        mock_serial.sync_clock = MagicMock()
+
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+        mock_tcp.sync_clock.assert_awaited_once()
+        mock_serial.sync_clock.assert_not_called()
+
+
+async def test_coordinator_clock_sync_via_tcp_failure_logged(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """TCP clock sync failure is logged, does not crash setup."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=_make_entry_data(max200_host="10.0.0.2"),
+        title="DOBISS",
+        version=1,
+    )
+    entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.dobiss_sx_evolution.coordinator.Max200TcpClient"
+    ) as mock_tcp_cls:
+        mock_tcp = mock_tcp_cls.return_value
+        mock_tcp.host = "10.0.0.2"
+        mock_tcp.sync_clock = AsyncMock(side_effect=OSError("unreachable"))
 
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()

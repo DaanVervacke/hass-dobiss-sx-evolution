@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant import config_entries
@@ -20,6 +20,7 @@ from custom_components.dobiss_sx_evolution.config_flow import (
 from custom_components.dobiss_sx_evolution.const import (
     CONF_DEVICE,
     CONF_MASTER_DEVICE,
+    CONF_MAX200_HOST,
     CONF_MODULE,
     CONNECTION_TYPE_SOCKETCAND,
     CONNECTION_TYPE_USB,
@@ -111,6 +112,51 @@ async def test_user_flow_success(
     assert result3["data"]["port"] == MOCK_CONFIG["port"]
     assert result3["data"]["interface"] == MOCK_CONFIG["interface"]
     assert mock_probe.called
+
+
+async def test_socketcand_stores_max200_host(
+    hass: HomeAssistant, mock_probe, mock_controller
+) -> None:
+    """socketcand flow stores max200_host in entry data when provided."""
+    with patch(
+        "custom_components.dobiss_sx_evolution.coordinator.Max200TcpClient",
+    ) as mock_tcp_cls:
+        mock_tcp_cls.return_value.sync_clock = AsyncMock()
+
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={"connection_type": CONNECTION_TYPE_SOCKETCAND},
+        )
+        result3 = await hass.config_entries.flow.async_configure(
+            result2["flow_id"],
+            user_input={**MOCK_CONFIG, CONF_MAX200_HOST: "10.0.0.2"},
+        )
+        await hass.async_block_till_done()
+
+    assert result3["type"] == FlowResultType.CREATE_ENTRY
+    assert result3["data"][CONF_MAX200_HOST] == "10.0.0.2"
+
+
+async def test_socketcand_omits_max200_host_when_blank(
+    hass: HomeAssistant, mock_probe, mock_controller
+) -> None:
+    """socketcand flow does not store max200_host when left blank."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"], user_input={"connection_type": CONNECTION_TYPE_SOCKETCAND}
+    )
+    result3 = await hass.config_entries.flow.async_configure(
+        result2["flow_id"], user_input=MOCK_CONFIG
+    )
+    await hass.async_block_till_done()
+
+    assert result3["type"] == FlowResultType.CREATE_ENTRY
+    assert CONF_MAX200_HOST not in result3["data"]
 
 
 async def test_user_flow_invalid_connection_type(hass: HomeAssistant) -> None:
@@ -1789,6 +1835,16 @@ def mock_coordinator_serial():
         yield
 
 
+@pytest.fixture
+def mock_coordinator_tcp():
+    """Patch Max200TcpClient in the coordinator to prevent real TCP I/O."""
+    with patch(
+        "custom_components.dobiss_sx_evolution.coordinator.Max200TcpClient",
+    ) as mock_cls:
+        mock_cls.return_value.sync_clock = AsyncMock()
+        yield
+
+
 async def _setup_entry_with_master(
     hass: HomeAssistant,
     mock_controller,
@@ -1800,6 +1856,36 @@ async def _setup_entry_with_master(
         data={
             "connection_type": CONNECTION_TYPE_SOCKETCAND,
             **MOCK_CONFIG_WITH_MASTER,
+        },
+        unique_id=f"{CONNECTION_TYPE_SOCKETCAND}:{MOCK_CONFIG['host']}:{MOCK_CONFIG['port']}/{MOCK_CONFIG['interface']}",
+        version=1,
+        subentries_data=subentries_data or [],
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    return entry
+
+
+MOCK_MAX200_HOST = "10.0.0.2"
+
+MOCK_CONFIG_WITH_MAX200_HOST = {
+    **MOCK_CONFIG,
+    CONF_MAX200_HOST: MOCK_MAX200_HOST,
+}
+
+
+async def _setup_entry_with_max200_host(
+    hass: HomeAssistant,
+    mock_controller,
+    subentries_data: list[dict] | None = None,
+) -> MockConfigEntry:
+    """Create a config entry with max200_host set (no master_device)."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            "connection_type": CONNECTION_TYPE_SOCKETCAND,
+            **MOCK_CONFIG_WITH_MAX200_HOST,
         },
         unique_id=f"{CONNECTION_TYPE_SOCKETCAND}:{MOCK_CONFIG['host']}:{MOCK_CONFIG['port']}/{MOCK_CONFIG['interface']}",
         version=1,
@@ -1826,6 +1912,15 @@ async def test_import_subentry_type_shown_with_master(
 ) -> None:
     """module_import is offered when master_device is configured."""
     entry = await _setup_entry_with_master(hass, mock_controller)
+    types = DobissConfigFlow.async_get_supported_subentry_types(entry)
+    assert SUBENTRY_TYPE_MODULE_IMPORT in types
+
+
+async def test_import_subentry_type_shown_with_max200_host(
+    hass: HomeAssistant, mock_controller, mock_coordinator_tcp
+) -> None:
+    """module_import is offered when max200_host is configured."""
+    entry = await _setup_entry_with_max200_host(hass, mock_controller)
     types = DobissConfigFlow.async_get_supported_subentry_types(entry)
     assert SUBENTRY_TYPE_MODULE_IMPORT in types
 
@@ -1881,6 +1976,113 @@ async def test_import_creates_subentries(
     b_outputs = module_subentries["B"].data["outputs"]
     assert "1" in b_outputs
     assert b_outputs["1"]["name"] == "Bedroom"
+
+
+async def test_import_via_tcp_creates_subentries(
+    hass: HomeAssistant, mock_controller, mock_coordinator_tcp
+) -> None:
+    """Import downloads config over TCP and creates module subentries."""
+    entry = await _setup_entry_with_max200_host(hass, mock_controller)
+
+    modules = [("A", 0)]
+    output_names = {(0, 0): "Kitchen"}
+
+    def mock_download_output_name(mod_idx, out_idx):
+        return output_names.get((mod_idx, out_idx))
+
+    with patch(
+        "custom_components.dobiss_sx_evolution.config_flow.Max200TcpClient"
+    ) as mock_client_cls:
+        mock_client = mock_client_cls.return_value
+        mock_client.download_config = AsyncMock(return_value=modules)
+        mock_client.download_output_name = AsyncMock(
+            side_effect=mock_download_output_name
+        )
+
+        result = await hass.config_entries.subentries.async_init(
+            (entry.entry_id, SUBENTRY_TYPE_MODULE_IMPORT),
+            context={"source": "user"},
+        )
+
+    assert result["type"] == FlowResultType.ABORT
+    assert result["reason"] == "import_successful"
+    assert result["description_placeholders"]["count"] == "1"
+
+    module_subentries = {
+        sub.data[CONF_MODULE]: sub
+        for sub in entry.subentries.values()
+        if sub.subentry_type == SUBENTRY_TYPE_MODULE
+    }
+    assert "A" in module_subentries
+    a_outputs = module_subentries["A"].data["outputs"]
+    assert a_outputs["1"]["name"] == "Kitchen"
+
+
+async def test_import_via_tcp_failure_aborts(
+    hass: HomeAssistant, mock_controller, mock_coordinator_tcp
+) -> None:
+    """TCP connection failure during import aborts with import_failed."""
+    entry = await _setup_entry_with_max200_host(hass, mock_controller)
+
+    with patch(
+        "custom_components.dobiss_sx_evolution.config_flow.Max200TcpClient"
+    ) as mock_client_cls:
+        mock_client = mock_client_cls.return_value
+        mock_client.download_config = AsyncMock(
+            side_effect=OSError("connection refused")
+        )
+
+        result = await hass.config_entries.subentries.async_init(
+            (entry.entry_id, SUBENTRY_TYPE_MODULE_IMPORT),
+            context={"source": "user"},
+        )
+
+    assert result["type"] == FlowResultType.ABORT
+    assert result["reason"] == "import_failed"
+
+
+async def test_import_prefers_tcp_over_serial(
+    hass: HomeAssistant, mock_controller, mock_coordinator_tcp
+) -> None:
+    """When both max200_host and master_device are set, TCP is used for import."""
+    entry_data = {
+        "connection_type": CONNECTION_TYPE_SOCKETCAND,
+        **MOCK_CONFIG,
+        CONF_MAX200_HOST: MOCK_MAX200_HOST,
+        CONF_MASTER_DEVICE: MOCK_MASTER_DEVICE,
+    }
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=entry_data,
+        unique_id=f"{CONNECTION_TYPE_SOCKETCAND}:{MOCK_CONFIG['host']}:{MOCK_CONFIG['port']}/{MOCK_CONFIG['interface']}",
+        version=1,
+        subentries_data=[],
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    with (
+        patch(
+            "custom_components.dobiss_sx_evolution.config_flow.Max200TcpClient"
+        ) as mock_tcp_cls,
+        patch(
+            "custom_components.dobiss_sx_evolution.config_flow.Max200SerialClient"
+        ) as mock_serial_cls,
+    ):
+        mock_tcp = mock_tcp_cls.return_value
+        mock_tcp.download_config = AsyncMock(return_value=[("A", 0)])
+        mock_tcp.download_output_name = AsyncMock(return_value=None)
+
+        result = await hass.config_entries.subentries.async_init(
+            (entry.entry_id, SUBENTRY_TYPE_MODULE_IMPORT),
+            context={"source": "user"},
+        )
+
+    assert result["type"] == FlowResultType.ABORT
+    assert result["reason"] == "import_successful"
+    mock_tcp.download_config.assert_awaited_once()
+    mock_serial_cls.assert_not_called()
 
 
 async def test_import_continues_on_output_download_failure(
@@ -2019,19 +2221,20 @@ async def test_import_serial_failure(
     assert result["reason"] == "import_failed"
 
 
-async def test_import_aborts_without_master_device(
+async def test_import_aborts_without_max200_connection(
     hass: HomeAssistant, mock_controller
 ) -> None:
-    """Import flow aborts when no master_device is configured.
+    """Import flow aborts when neither master_device nor max200_host is configured.
 
     The import subentry type is hidden from async_get_supported_subentry_types
-    when master_device is absent, so it cannot be reached through the normal
+    when neither is configured, so it cannot be reached through the normal
     subentries.async_init flow manager (that raises UnknownHandler). The
-    no_master_device guard is a defensive check inside the handler itself, so
-    it is exercised by invoking the handler's step method directly.
+    no_max200_connection guard is a defensive check inside the handler
+    itself, so it is exercised by invoking the handler's step method directly.
     """
     entry = await _setup_loaded_entry(hass, mock_controller)
     assert CONF_MASTER_DEVICE not in entry.data
+    assert CONF_MAX200_HOST not in entry.data
 
     flow = ModuleImportSubentryFlowHandler()
     flow.hass = hass
@@ -2039,7 +2242,7 @@ async def test_import_aborts_without_master_device(
 
     result = await flow.async_step_user(None)
     assert result["type"] == FlowResultType.ABORT
-    assert result["reason"] == "no_master_device"
+    assert result["reason"] == "no_max200_connection"
 
 
 # ---------------------------------------------------------------------------

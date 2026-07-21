@@ -23,6 +23,7 @@ from .const import (
     CLOCK_SYNC_INTERVAL_HOURS,
     CONF_CONNECTION_TYPE,
     CONF_MASTER_DEVICE,
+    CONF_MAX200_HOST,
     CONF_MODULE,
     CONNECTION_TYPE_SOCKETCAND,
     DOMAIN,
@@ -37,6 +38,7 @@ from .controller import (
     UsbConnection,
 )
 from .serial_client import Max200SerialClient
+from .tcp_client import Max200TcpClient
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -126,6 +128,11 @@ class DobissCoordinator(DataUpdateCoordinator[dict[OutputKey, int]]):
             Max200SerialClient(master_device) if master_device else None
         )
 
+        max200_host = entry.data.get(CONF_MAX200_HOST)
+        self.tcp_client: Max200TcpClient | None = (
+            Max200TcpClient(max200_host) if max200_host else None
+        )
+
         self._debounce_unsub: Callable[[], None] | None = None
 
     async def _async_setup(self) -> None:
@@ -143,7 +150,7 @@ class DobissCoordinator(DataUpdateCoordinator[dict[OutputKey, int]]):
             self.controller.async_add_listener(self._on_controller_update)
         )
 
-        if self.serial_client is not None:
+        if self.tcp_client is not None or self.serial_client is not None:
             await self._sync_clock()
             self.config_entry.async_on_unload(
                 async_track_time_interval(
@@ -178,15 +185,21 @@ class DobissCoordinator(DataUpdateCoordinator[dict[OutputKey, int]]):
         self.async_set_updated_data(dict(self.controller.states))
 
     async def _sync_clock(self, _now: Any = None) -> None:
-        """Send current time to the Max200 over serial."""
-        if self.serial_client is None:
+        """Send current time to the Max200."""
+        now = dt_util.now()
+        if self.tcp_client is not None:
+            try:
+                await self.tcp_client.sync_clock(now)
+            except Exception:  # noqa: BLE001
+                _LOGGER.warning("Clock sync to Max200 failed", exc_info=True)
             return
-        try:
-            await self.hass.async_add_executor_job(
-                self.serial_client.sync_clock, dt_util.now()
-            )
-        except Exception:  # noqa: BLE001
-            _LOGGER.warning("Clock sync to Max200 failed", exc_info=True)
+        if self.serial_client is not None:
+            try:
+                await self.hass.async_add_executor_job(
+                    self.serial_client.sync_clock, now
+                )
+            except Exception:  # noqa: BLE001
+                _LOGGER.warning("Clock sync to Max200 failed", exc_info=True)
 
     async def async_shutdown(self) -> None:
         """Tear down the controller, then the coordinator."""

@@ -9,11 +9,25 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime
 
 from .const import MAX200_TCP_PORT
+from .protocol import (
+    CONFIG_RESPONSE_SIZE,
+    OUTPUT_NAME_RESPONSE_SIZE,
+    build_clock_set_packets,
+    build_config_download_intro,
+    build_output_name_intro,
+    parse_config_response,
+    parse_output_name,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
+# MaxTool's LAN config download uses a 30s Receive() timeout for the 36-byte
+# ConfigVars response. 5s has been fine in practice for the small payloads
+# this client sends (config download, output names, clock set), but if slow
+# Max200 controllers start timing out, raise this or add a per-call override.
 CONNECT_TIMEOUT_S = 5.0
 
 
@@ -80,3 +94,24 @@ class Max200TcpClient:
         finally:
             writer.close()
             await writer.wait_closed()
+
+    async def sync_clock(self, dt: datetime) -> None:
+        """K0 clock set over TCP."""
+        intro, output = build_clock_set_packets(dt)
+        await self.send_command(intro, output)
+
+    async def download_config(self) -> list[tuple[str, int]]:
+        """a0 config download over TCP."""
+        intro = build_config_download_intro()
+        data = await self.send_and_receive(intro, response_size=CONFIG_RESPONSE_SIZE)
+        return parse_config_response(data)
+
+    async def download_output_name(
+        self, module_index: int, output_index: int
+    ) -> str | None:
+        """u1 output name download over TCP."""
+        intro = build_output_name_intro(module_index, output_index)
+        data = await self.send_and_receive(
+            intro, response_size=OUTPUT_NAME_RESPONSE_SIZE
+        )
+        return parse_output_name(data)

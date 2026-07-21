@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from custom_components.dobiss_sx_evolution.tcp_client import Max200TcpClient
@@ -86,3 +87,69 @@ def test_host_property() -> None:
     """host property returns the configured host."""
     client = Max200TcpClient("10.0.0.1", 1001)
     assert client.host == "10.0.0.1"
+
+
+@patch("custom_components.dobiss_sx_evolution.tcp_client.asyncio.open_connection")
+async def test_sync_clock_sends_clock_packets(mock_open) -> None:
+    """sync_clock sends intro + BCD time bytes."""
+    writer = _mock_writer()
+    mock_open.return_value = (_mock_reader(), writer)
+
+    client = Max200TcpClient("10.0.0.1", 1001)
+    dt = datetime(2026, 7, 21, 14, 30, 45)
+    await client.sync_clock(dt)
+
+    calls = writer.write.call_args_list
+    intro = calls[0][0][0]
+    assert intro[0] == 0xED
+    assert intro[1] == 0x4B  # 'K'
+    assert intro[2] == 0x30  # '0'
+    output = calls[1][0][0]
+    assert len(output) == 7
+
+
+@patch("custom_components.dobiss_sx_evolution.tcp_client.asyncio.open_connection")
+async def test_download_config_returns_parsed_modules(mock_open) -> None:
+    """download_config sends intro and parses the response."""
+    response = bytearray(36)
+    response[0] = ord("A")
+    response[2] = ord("C")
+    writer = _mock_writer()
+    mock_open.return_value = (_mock_reader(bytes(response)), writer)
+
+    client = Max200TcpClient("10.0.0.1", 1001)
+    result = await client.download_config()
+
+    assert ("A", 0) in result
+    assert ("C", 2) in result
+    writer.write.assert_called_once()  # intro only, no output
+
+
+@patch("custom_components.dobiss_sx_evolution.tcp_client.asyncio.open_connection")
+async def test_download_output_name_returns_parsed_name(mock_open) -> None:
+    """download_output_name sends intro and parses the response."""
+    response = bytearray(32)
+    response[0:7] = b"Kitchen"
+    response[1] = ord("i")  # byte 1 != 0xFF means configured
+    writer = _mock_writer()
+    mock_open.return_value = (_mock_reader(bytes(response)), writer)
+
+    client = Max200TcpClient("10.0.0.1", 1001)
+    result = await client.download_output_name(0, 0)
+
+    assert result is not None
+    assert "Kitchen" in result or "itchen" in result
+
+
+@patch("custom_components.dobiss_sx_evolution.tcp_client.asyncio.open_connection")
+async def test_download_output_name_unconfigured(mock_open) -> None:
+    """download_output_name returns None for unconfigured output."""
+    response = bytearray(32)
+    response[1] = 0xFF
+    writer = _mock_writer()
+    mock_open.return_value = (_mock_reader(bytes(response)), writer)
+
+    client = Max200TcpClient("10.0.0.1", 1001)
+    result = await client.download_output_name(0, 0)
+
+    assert result is None
