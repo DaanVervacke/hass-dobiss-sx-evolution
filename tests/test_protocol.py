@@ -430,15 +430,15 @@ def test_build_output_name_intro_structure():
     assert intro[1] == 0x75
     assert intro[2] == 0x31
     assert intro[3] == 0xA0
-    # addr = 128 + 0*384 + 0*32 = 128 = 0x0080
-    assert intro[4] == 0x00
-    assert intro[5] == 0x80
+    # addr = 0x8000 + 0*384 + 0*32 = 0x8000
+    assert intro[4] == 0x80
+    assert intro[5] == 0x00
 
 
 def test_build_output_name_intro_address_calculation():
-    """Address = 128 + module_index*384 + output_index*32."""
+    """Address = 0x8000 + module_index*384 + output_index*32."""
     intro = build_output_name_intro(2, 5)
-    addr = 128 + 2 * 384 + 5 * 32
+    addr = 0x8000 + 2 * 384 + 5 * 32
     assert intro[4] == addr >> 8
     assert intro[5] == addr & 0xFF
 
@@ -523,11 +523,11 @@ def test_build_mood_frame_out_of_range():
 
 
 def test_output_name_eeprom_addr_first_slot():
-    assert output_name_eeprom_addr(0, 0) == 128
+    assert output_name_eeprom_addr(0, 0) == 0x8000
 
 
 def test_output_name_eeprom_addr_formula():
-    assert output_name_eeprom_addr(2, 5) == 128 + 2 * 384 + 5 * 32
+    assert output_name_eeprom_addr(2, 5) == 0x8000 + 2 * 384 + 5 * 32
 
 
 def test_output_name_eeprom_addr_matches_intro():

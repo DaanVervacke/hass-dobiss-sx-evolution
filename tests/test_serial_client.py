@@ -12,17 +12,30 @@ from custom_components.dobiss_sx_evolution.protocol import to_bcd
 from custom_components.dobiss_sx_evolution.serial_client import Max200SerialClient
 
 
-def _mock_port(echo_byte: int | None = None, read_data: bytes = b""):
-    """Create a mock serial.Serial with configurable echo and read data."""
+def _mock_port(
+    echo_byte: int | None = None,
+    read_data: bytes = b"",
+    retries: int = 1,
+):
+    """Create a mock serial.Serial with configurable echo and read data.
+
+    Each handshake attempt reads twice: once for the ready byte (discarded),
+    once for the echo. The ready byte is always b"M".
+    """
     port = MagicMock()
-    reads = []
-    if echo_byte is not None:
-        reads.append(bytes([echo_byte]))
+    reads: list[bytes] = []
+    for _ in range(retries):
+        reads.append(b"M")
+        if echo_byte is not None:
+            reads.append(bytes([echo_byte]))
+        else:
+            reads.append(b"")
     if read_data:
         reads.append(read_data)
-    port.read = MagicMock(side_effect=reads if reads else [b""])
+    port.read = MagicMock(side_effect=reads)
     port.write = MagicMock()
     port.close = MagicMock()
+    port.reset_input_buffer = MagicMock()
     return port
 
 
@@ -53,9 +66,10 @@ def test_sync_clock_sends_bcd_bytes(mock_serial_cls):
     port.close.assert_called_once()
 
 
+@patch("custom_components.dobiss_sx_evolution.serial_client.time.sleep")
 @patch("custom_components.dobiss_sx_evolution.serial_client.serial.Serial")
-def test_sync_clock_handshake_mismatch_raises(mock_serial_cls):
-    port = _mock_port(echo_byte=0xFF)
+def test_sync_clock_handshake_mismatch_raises(mock_serial_cls, _mock_sleep):
+    port = _mock_port(echo_byte=0xFF, retries=3)
     mock_serial_cls.return_value = port
 
     client = Max200SerialClient("/dev/ttyUSB1")
@@ -65,9 +79,10 @@ def test_sync_clock_handshake_mismatch_raises(mock_serial_cls):
     port.close.assert_called_once()
 
 
+@patch("custom_components.dobiss_sx_evolution.serial_client.time.sleep")
 @patch("custom_components.dobiss_sx_evolution.serial_client.serial.Serial")
-def test_handshake_timeout_raises(mock_serial_cls):
-    port = _mock_port()
+def test_handshake_timeout_raises(mock_serial_cls, _mock_sleep):
+    port = _mock_port(retries=3)
     mock_serial_cls.return_value = port
 
     client = Max200SerialClient("/dev/ttyUSB1")
@@ -77,17 +92,45 @@ def test_handshake_timeout_raises(mock_serial_cls):
     port.close.assert_called_once()
 
 
+@patch("custom_components.dobiss_sx_evolution.serial_client.time.sleep")
 @patch("custom_components.dobiss_sx_evolution.serial_client.serial.Serial")
-def test_serial_exception_wrapped_in_connection_error(mock_serial_cls):
+def test_serial_exception_wrapped_in_connection_error(mock_serial_cls, _mock_sleep):
     port = MagicMock()
     port.write = MagicMock(side_effect=serial.SerialException("device gone"))
     port.close = MagicMock()
+    port.reset_input_buffer = MagicMock()
     mock_serial_cls.return_value = port
 
     client = Max200SerialClient("/dev/ttyUSB1")
     with pytest.raises(ConnectionError, match="device gone"):
         client.sync_clock(datetime(2026, 1, 1))
 
+    port.close.assert_called_once()
+
+
+@patch("custom_components.dobiss_sx_evolution.serial_client.time.sleep")
+@patch("custom_components.dobiss_sx_evolution.serial_client.serial.Serial")
+def test_handshake_retries_then_succeeds(mock_serial_cls, _mock_sleep):
+    """Handshake succeeds on the third attempt after two mismatches."""
+    port = MagicMock()
+    port.read = MagicMock(
+        side_effect=[
+            b"M",
+            bytes([0xFF]),
+            b"M",
+            bytes([0x00]),
+            b"M",
+            bytes([ord("K")]),
+        ]
+    )
+    port.reset_input_buffer = MagicMock()
+    port.close = MagicMock()
+    mock_serial_cls.return_value = port
+
+    client = Max200SerialClient("/dev/ttyUSB1")
+    client.sync_clock(datetime(2026, 1, 1))
+
+    assert port.read.call_count == 6
     port.close.assert_called_once()
 
 
@@ -148,7 +191,7 @@ def test_download_output_name_eeprom_address(mock_serial_cls, _mock_sleep):
     client = Max200SerialClient("/dev/ttyUSB1")
     client.download_output_name(2, 5)
 
-    addr = 128 + 2 * 384 + 5 * 32
+    addr = 0x8000 + 2 * 384 + 5 * 32
     base_call = port.write.call_args_list[1]
     assert base_call[0][0] == bytes([0xA0])
     addr_call = port.write.call_args_list[2]
@@ -159,9 +202,41 @@ def test_download_output_name_eeprom_address(mock_serial_cls, _mock_sleep):
 
 @patch("custom_components.dobiss_sx_evolution.serial_client.time.sleep")
 @patch("custom_components.dobiss_sx_evolution.serial_client.serial.Serial")
+def test_download_module_output_names(mock_serial_cls, _mock_sleep):
+    """Batch download reads all outputs in one connection."""
+    name0 = bytearray(32)
+    name0[:4] = b"Lamp"
+    name1 = bytearray(32)
+    name2 = bytearray(32)
+    name2[:6] = b"Switch"
+
+    port = MagicMock()
+    port.read = MagicMock(
+        side_effect=[
+            b"M",
+            bytes([ord("u")]),
+            bytes(name0),
+            bytes(name1),
+            bytes(name2),
+        ]
+    )
+    port.reset_input_buffer = MagicMock()
+    port.close = MagicMock()
+    mock_serial_cls.return_value = port
+
+    client = Max200SerialClient("/dev/ttyUSB1")
+    result = client.download_module_output_names(0, 3)
+
+    assert result == {0: "Lamp", 2: "Switch"}
+    port.write.assert_any_call(b"u1")
+    port.close.assert_called_once()
+
+
+@patch("custom_components.dobiss_sx_evolution.serial_client.time.sleep")
+@patch("custom_components.dobiss_sx_evolution.serial_client.serial.Serial")
 def test_port_closed_on_exception(mock_serial_cls, _mock_sleep):
     """Port is closed even when download_config raises during handshake."""
-    port = _mock_port()
+    port = _mock_port(retries=3)
     mock_serial_cls.return_value = port
 
     client = Max200SerialClient("/dev/ttyUSB1")

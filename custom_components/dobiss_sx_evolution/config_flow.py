@@ -687,9 +687,10 @@ class ModuleSubentryFlowHandler(ConfigSubentryFlow):
         subentry = self._get_reconfigure_subentry()
         outputs: dict[str, Any] = subentry.data.get("outputs", {})
 
-        menu_options = ["add_light", "add_shutter", "add_switch", "edit_module"]
+        menu_options = ["add_light", "add_shutter", "add_switch"]
         if outputs:
-            menu_options.insert(2, "remove_output")
+            menu_options.extend(["edit_output", "remove_output"])
+        menu_options.append("edit_module")
 
         return self.async_show_menu(
             step_id="reconfigure",
@@ -895,6 +896,137 @@ class ModuleSubentryFlowHandler(ConfigSubentryFlow):
         )
 
     # ------------------------------------------------------------------ #
+    # edit_output                                                          #
+    # ------------------------------------------------------------------ #
+
+    async def async_step_edit_output(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Pick an existing output to change its type."""
+        subentry = self._get_reconfigure_subentry()
+        outputs: dict[str, Any] = dict(subentry.data.get("outputs", {}))
+
+        if not outputs:
+            return self.async_abort(reason="no_outputs_to_edit")
+
+        if user_input is not None:
+            chosen = user_input["output"]
+            if chosen not in outputs:
+                return self.async_abort(reason="no_outputs_to_edit")
+            self._edit_output_key = chosen
+            return await self.async_step_edit_output_type()
+
+        options: list[SelectOptionDict] = []
+        for output_str, cfg in sorted(outputs.items(), key=lambda kv: int(kv[0])):
+            kind = cfg.get("type", "")
+            label_name = cfg.get("name") or ""
+            label = f"{output_str}: {kind} {label_name}".strip()
+            options.append(SelectOptionDict(label=label, value=output_str))
+
+        schema = vol.Schema(
+            {
+                vol.Required("output"): SelectSelector(
+                    SelectSelectorConfig(
+                        options=options, mode=SelectSelectorMode.DROPDOWN
+                    )
+                ),
+            }
+        )
+        return self.async_show_form(
+            step_id="edit_output", data_schema=schema, errors={}
+        )
+
+    async def async_step_edit_output_type(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Pick a new type for the selected output."""
+        subentry = self._get_reconfigure_subentry()
+        output_key: str = self._edit_output_key
+        outputs: dict[str, Any] = dict(subentry.data.get("outputs", {}))
+        current_cfg = outputs.get(output_key, {})
+        current_type = current_cfg.get("type", "light")
+
+        if user_input is not None:
+            new_type: str = user_input["type"]
+            if new_type == "shutter":
+                return await self.async_step_edit_output_down()
+            new_cfg: dict[str, Any] = {
+                "type": new_type,
+                "name": current_cfg.get("name", ""),
+            }
+            outputs[output_key] = new_cfg
+            new_data = dict(subentry.data) | {"outputs": outputs}
+            return self.async_update_and_abort(
+                self._get_entry(),
+                subentry,
+                data=new_data,
+                title=subentry.title,
+            )
+
+        schema = vol.Schema(
+            {
+                vol.Required("type", default=current_type): SelectSelector(
+                    SelectSelectorConfig(
+                        options=["light", "shutter", "switch"],
+                        translation_key="output_type",
+                        mode=SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+            }
+        )
+        return self.async_show_form(
+            step_id="edit_output_type", data_schema=schema, errors={}
+        )
+
+    async def async_step_edit_output_down(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Ask for the down output when changing to shutter."""
+        errors: dict[str, str] = {}
+        subentry = self._get_reconfigure_subentry()
+        output_key: str = self._edit_output_key
+        outputs: dict[str, Any] = dict(subentry.data.get("outputs", {}))
+        current_cfg = outputs.get(output_key, {})
+        up_output = int(output_key)
+
+        if user_input is not None:
+            down_output: int = user_input["down_output"]
+            if down_output < 1 or down_output > OUTPUTS_PER_MODULE:
+                errors["down_output"] = "invalid_output"
+            elif down_output == up_output:
+                errors["base"] = "same_output"
+            if not errors:
+                # Remove existing entry on the down_output slot if present.
+                outputs.pop(str(down_output), None)
+                outputs[output_key] = {
+                    "type": "shutter",
+                    "down_output": down_output,
+                    "name": current_cfg.get("name", ""),
+                }
+                new_data = dict(subentry.data) | {"outputs": outputs}
+                return self.async_update_and_abort(
+                    self._get_entry(),
+                    subentry,
+                    data=new_data,
+                    title=subentry.title,
+                )
+
+        defaults = user_input or {}
+        current_down = current_cfg.get("down_output", up_output + 1)
+        schema = vol.Schema(
+            {
+                vol.Required("up_output", default=up_output): int,
+                vol.Required(
+                    "down_output",
+                    default=defaults.get("down_output", current_down),
+                ): int,
+            }
+        )
+        return self.async_show_form(
+            step_id="edit_output_down", data_schema=schema, errors=errors
+        )
+
+    # ------------------------------------------------------------------ #
     # rename_module                                                        #
     # ------------------------------------------------------------------ #
 
@@ -975,15 +1107,24 @@ class ModuleImportSubentryFlowHandler(ConfigSubentryFlow):
         }
 
         dl_config: Callable[[], Awaitable[list[tuple[str, int]]]]
-        dl_name: Callable[[int, int], Awaitable[str | None]]
+        dl_names: Callable[[int], Awaitable[dict[int, str]]]
 
         if max200_host:
             tcp_client = Max200TcpClient(max200_host)
             dl_config = tcp_client.download_config
-            dl_name = tcp_client.download_output_name
+
+            async def _tcp_dl_names(module_index: int) -> dict[int, str]:
+                names: dict[int, str] = {}
+                for output_index in range(OUTPUTS_PER_MODULE):
+                    name = await tcp_client.download_output_name(
+                        module_index, output_index
+                    )
+                    if name is not None:
+                        names[output_index] = name
+                return names
+
+            dl_names = _tcp_dl_names
         else:
-            # Guaranteed truthy: the abort check above requires max200_host
-            # or master_device, and max200_host is falsy in this branch.
             assert master_device
             serial_client = Max200SerialClient(master_device)
             hass = self.hass
@@ -993,11 +1134,11 @@ class ModuleImportSubentryFlowHandler(ConfigSubentryFlow):
                     serial_client.download_config,
                 )
 
-            async def dl_name(module_index: int, output_index: int) -> str | None:
+            async def dl_names(module_index: int) -> dict[int, str]:
                 return await hass.async_add_executor_job(
-                    serial_client.download_output_name,
+                    serial_client.download_module_output_names,
                     module_index,
-                    output_index,
+                    OUTPUTS_PER_MODULE,
                 )
 
         try:
@@ -1013,25 +1154,26 @@ class ModuleImportSubentryFlowHandler(ConfigSubentryFlow):
         if not new_modules:
             return self.async_abort(reason="no_new_modules")
 
-        imported = 0
+        all_names: dict[str, dict[int, str]] = {}
         for letter, module_index in new_modules:
+            try:
+                all_names[letter] = await dl_names(module_index)
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.debug(
+                    "Failed to fetch output names for module %s: %s",
+                    letter,
+                    err,
+                )
+                all_names[letter] = {}
+
+        imported = 0
+        for letter, _module_index in new_modules:
             outputs: dict[str, dict[str, str]] = {}
-            for output_index in range(OUTPUTS_PER_MODULE):
-                try:
-                    name = await dl_name(module_index, output_index)
-                except Exception as err:  # noqa: BLE001
-                    _LOGGER.debug(
-                        "Failed to fetch output %d for module %s: %s",
-                        output_index + 1,
-                        letter,
-                        err,
-                    )
-                    continue
-                if name is not None:
-                    outputs[str(output_index + 1)] = {
-                        "type": "light",
-                        "name": name,
-                    }
+            for output_index, name in all_names[letter].items():
+                outputs[str(output_index + 1)] = {
+                    "type": "light",
+                    "name": name,
+                }
 
             subentry = ConfigSubentry(
                 data=MappingProxyType(

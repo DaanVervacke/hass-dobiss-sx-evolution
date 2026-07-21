@@ -138,8 +138,12 @@ def parse_config_response(data: bytes) -> list[tuple[str, int]]:
 
 
 def output_name_eeprom_addr(module_index: int, output_index: int) -> int:
-    """Calculate EEPROM address for a UitgangVars (u1) record."""
-    return 128 + module_index * 384 + output_index * 32
+    """Calculate EEPROM address for a UitgangVars (u1) record.
+
+    The 0x80 page base goes into addr_hi (high byte), not the low byte.
+    Callers split with >> 8 / & 0xFF.
+    """
+    return 0x8000 + module_index * 384 + output_index * 32
 
 
 def build_output_name_intro(module_index: int, output_index: int) -> bytes:

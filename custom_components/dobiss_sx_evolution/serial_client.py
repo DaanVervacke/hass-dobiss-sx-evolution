@@ -16,6 +16,8 @@ from .const import (
     MASTER_SERIAL_BAUDRATE,
     SERIAL_DELAY_AFTER_ADDR_S,
     SERIAL_DELAY_AFTER_BASE_S,
+    SERIAL_HANDSHAKE_RETRIES,
+    SERIAL_RETRY_DELAY_S,
     SERIAL_SETTLE_BEFORE_OPEN_S,
 )
 from .protocol import (
@@ -46,21 +48,36 @@ class Max200SerialClient:
             raise ConnectionError(f"Port {self._device}: {err}") from err
 
     def _handshake(self, port: serial.Serial, command: str) -> None:
-        """Send 2-char command, verify first char echo."""
-        try:
-            port.write(command.encode("ascii"))
-            echo = port.read(1)
-            if not echo:
-                raise ConnectionError(
-                    f"Port {self._device}: no response within timeout"
-                )
-            if echo[0] != ord(command[0]):
-                raise ConnectionError(
-                    f"Port {self._device}: handshake mismatch for {command!r}, "
-                    f"expected {command[0]!r} got {echo[0]:#x}"
-                )
-        except serial.SerialException as err:
-            raise ConnectionError(f"Port {self._device}: {err}") from err
+        """Drain the ready byte, send 2-char command, verify first char echo.
+
+        The Max200 sends a ready byte when the port opens. We must read
+        (and discard) it before writing the command. After writing, the
+        Max200 echoes the first character as a lock confirmation.
+        Retries on mismatch since the Max200 can be slow to respond.
+        """
+        last_err: Exception | None = None
+        for attempt in range(SERIAL_HANDSHAKE_RETRIES):
+            try:
+                port.reset_input_buffer()
+                port.read(1)
+                port.write(command.encode("ascii"))
+                echo = port.read(1)
+                if not echo:
+                    last_err = ConnectionError(
+                        f"Port {self._device}: no response within timeout"
+                    )
+                elif echo[0] != ord(command[0]):
+                    last_err = ConnectionError(
+                        f"Port {self._device}: handshake mismatch for "
+                        f"{command!r}, expected {command[0]!r} got {echo[0]:#x}"
+                    )
+                else:
+                    return
+            except serial.SerialException as err:
+                last_err = ConnectionError(f"Port {self._device}: {err}")
+            if attempt < SERIAL_HANDSHAKE_RETRIES - 1:
+                time.sleep(SERIAL_RETRY_DELAY_S)
+        raise last_err  # type: ignore[misc]
 
     def _write_control_byte(
         self,
@@ -120,5 +137,28 @@ class Max200SerialClient:
             self._write_control_byte(port, 0xA0, addr >> 8, addr & 0xFF, 0, 3)
             data = port.read(OUTPUT_NAME_RESPONSE_SIZE)
             return parse_output_name(data)
+        finally:
+            port.close()
+
+    def download_module_output_names(
+        self, module_index: int, count: int
+    ) -> dict[int, str]:
+        """u1 batch output name download. Single connection for all outputs.
+
+        Returns {output_index: name} for outputs that have a non-empty name.
+        """
+        time.sleep(SERIAL_SETTLE_BEFORE_OPEN_S)
+        port = self._open()
+        try:
+            self._handshake(port, "u1")
+            names: dict[int, str] = {}
+            for output_index in range(count):
+                addr = output_name_eeprom_addr(module_index, output_index)
+                self._write_control_byte(port, 0xA0, addr >> 8, addr & 0xFF, 0, 3)
+                data = port.read(OUTPUT_NAME_RESPONSE_SIZE)
+                name = parse_output_name(data)
+                if name is not None:
+                    names[output_index] = name
+            return names
         finally:
             port.close()

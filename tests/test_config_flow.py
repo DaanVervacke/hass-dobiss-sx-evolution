@@ -1462,6 +1462,366 @@ async def test_subentry_remove_output_invalid_output(
 
 
 # ---------------------------------------------------------------------------
+# ModuleSubentryFlowHandler.async_step_edit_output
+# ---------------------------------------------------------------------------
+
+
+async def test_subentry_edit_output_light_to_switch(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """Changing a light to a switch updates the type and preserves the name."""
+    entry = await _setup_loaded_entry(
+        hass,
+        mock_controller,
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_MODULE,
+                "title": "Module A",
+                "unique_id": "module:A",
+                "data": {
+                    "module": "A",
+                    "dimmable": False,
+                    "outputs": {"3": {"type": "light", "name": "Hall"}},
+                },
+            }
+        ],
+    )
+    sub_id = next(iter(entry.subentries))
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_MODULE),
+        context={"source": "reconfigure", "subentry_id": sub_id},
+    )
+    result2 = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        user_input={"next_step_id": "edit_output"},
+    )
+    assert result2["type"] == FlowResultType.FORM
+    assert result2["step_id"] == "edit_output"
+
+    result3 = await hass.config_entries.subentries.async_configure(
+        result2["flow_id"],
+        user_input={"output": "3"},
+    )
+    assert result3["type"] == FlowResultType.FORM
+    assert result3["step_id"] == "edit_output_type"
+
+    result4 = await hass.config_entries.subentries.async_configure(
+        result3["flow_id"],
+        user_input={"type": "switch"},
+    )
+    assert result4["type"] == FlowResultType.ABORT
+    assert result4["reason"] == "reconfigure_successful"
+
+    sub = entry.subentries[sub_id]
+    assert sub.data["outputs"]["3"]["type"] == "switch"
+    assert sub.data["outputs"]["3"]["name"] == "Hall"
+    assert "down_output" not in sub.data["outputs"]["3"]
+
+
+async def test_subentry_edit_output_light_to_shutter(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """Changing a light to a shutter stores the down_output."""
+    entry = await _setup_loaded_entry(
+        hass,
+        mock_controller,
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_MODULE,
+                "title": "Module A",
+                "unique_id": "module:A",
+                "data": {
+                    "module": "A",
+                    "dimmable": False,
+                    "outputs": {"1": {"type": "light", "name": "Blind"}},
+                },
+            }
+        ],
+    )
+    sub_id = next(iter(entry.subentries))
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_MODULE),
+        context={"source": "reconfigure", "subentry_id": sub_id},
+    )
+    result2 = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        user_input={"next_step_id": "edit_output"},
+    )
+    result3 = await hass.config_entries.subentries.async_configure(
+        result2["flow_id"],
+        user_input={"output": "1"},
+    )
+    result4 = await hass.config_entries.subentries.async_configure(
+        result3["flow_id"],
+        user_input={"type": "shutter"},
+    )
+    assert result4["type"] == FlowResultType.FORM
+    assert result4["step_id"] == "edit_output_down"
+
+    result5 = await hass.config_entries.subentries.async_configure(
+        result4["flow_id"],
+        user_input={"up_output": 1, "down_output": 2},
+    )
+    assert result5["type"] == FlowResultType.ABORT
+    assert result5["reason"] == "reconfigure_successful"
+
+    sub = entry.subentries[sub_id]
+    assert sub.data["outputs"]["1"]["type"] == "shutter"
+    assert sub.data["outputs"]["1"]["down_output"] == 2
+    assert sub.data["outputs"]["1"]["name"] == "Blind"
+
+
+async def test_subentry_edit_output_shutter_to_light(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """Changing a shutter back to a light drops down_output."""
+    entry = await _setup_loaded_entry(
+        hass,
+        mock_controller,
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_MODULE,
+                "title": "Module A",
+                "unique_id": "module:A",
+                "data": {
+                    "module": "A",
+                    "dimmable": False,
+                    "outputs": {
+                        "5": {
+                            "type": "shutter",
+                            "down_output": 6,
+                            "name": "Screen",
+                        }
+                    },
+                },
+            }
+        ],
+    )
+    sub_id = next(iter(entry.subentries))
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_MODULE),
+        context={"source": "reconfigure", "subentry_id": sub_id},
+    )
+    result2 = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        user_input={"next_step_id": "edit_output"},
+    )
+    result3 = await hass.config_entries.subentries.async_configure(
+        result2["flow_id"],
+        user_input={"output": "5"},
+    )
+    result4 = await hass.config_entries.subentries.async_configure(
+        result3["flow_id"],
+        user_input={"type": "light"},
+    )
+    assert result4["type"] == FlowResultType.ABORT
+    assert result4["reason"] == "reconfigure_successful"
+
+    sub = entry.subentries[sub_id]
+    assert sub.data["outputs"]["5"]["type"] == "light"
+    assert "down_output" not in sub.data["outputs"]["5"]
+
+
+async def test_subentry_edit_output_shutter_invalid_down_output(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """Changing to shutter with an invalid down_output shows an error."""
+    entry = await _setup_loaded_entry(
+        hass,
+        mock_controller,
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_MODULE,
+                "title": "Module A",
+                "unique_id": "module:A",
+                "data": {
+                    "module": "A",
+                    "dimmable": False,
+                    "outputs": {
+                        "1": {"type": "light", "name": "L1"},
+                        "3": {"type": "light", "name": "L3"},
+                    },
+                },
+            }
+        ],
+    )
+    sub_id = next(iter(entry.subentries))
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_MODULE),
+        context={"source": "reconfigure", "subentry_id": sub_id},
+    )
+    result2 = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        user_input={"next_step_id": "edit_output"},
+    )
+    result3 = await hass.config_entries.subentries.async_configure(
+        result2["flow_id"],
+        user_input={"output": "1"},
+    )
+
+    # pick shutter to get to the down_output step
+    result4 = await hass.config_entries.subentries.async_configure(
+        result3["flow_id"],
+        user_input={"type": "shutter"},
+    )
+    assert result4["type"] == FlowResultType.FORM
+    assert result4["step_id"] == "edit_output_down"
+
+    # same output as up
+    result5 = await hass.config_entries.subentries.async_configure(
+        result4["flow_id"],
+        user_input={"up_output": 1, "down_output": 1},
+    )
+    assert result5["type"] == FlowResultType.FORM
+    assert result5["errors"]["base"] == "same_output"
+
+    # out of range
+    result6 = await hass.config_entries.subentries.async_configure(
+        result5["flow_id"],
+        user_input={"up_output": 1, "down_output": 0},
+    )
+    assert result6["type"] == FlowResultType.FORM
+    assert result6["errors"]["down_output"] == "invalid_output"
+
+    # occupied by another output -- auto-claimed, existing entry removed
+    result7 = await hass.config_entries.subentries.async_configure(
+        result6["flow_id"],
+        user_input={"up_output": 1, "down_output": 3},
+    )
+    assert result7["type"] == FlowResultType.ABORT
+    assert result7["reason"] == "reconfigure_successful"
+
+    sub = entry.subentries[sub_id]
+    assert sub.data["outputs"]["1"]["type"] == "shutter"
+    assert sub.data["outputs"]["1"]["down_output"] == 3
+    assert "3" not in sub.data["outputs"]
+
+
+async def test_subentry_edit_output_shutter_change_down_output(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """Changing a shutter's down_output frees the old one from occupied."""
+    entry = await _setup_loaded_entry(
+        hass,
+        mock_controller,
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_MODULE,
+                "title": "Module A",
+                "unique_id": "module:A",
+                "data": {
+                    "module": "A",
+                    "dimmable": False,
+                    "outputs": {
+                        "1": {
+                            "type": "shutter",
+                            "down_output": 2,
+                            "name": "Blind",
+                        },
+                        "3": {"type": "light", "name": "L3"},
+                    },
+                },
+            }
+        ],
+    )
+    sub_id = next(iter(entry.subentries))
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_MODULE),
+        context={"source": "reconfigure", "subentry_id": sub_id},
+    )
+    result2 = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        user_input={"next_step_id": "edit_output"},
+    )
+    result3 = await hass.config_entries.subentries.async_configure(
+        result2["flow_id"],
+        user_input={"output": "1"},
+    )
+    # Pick shutter to get to down_output step
+    result4 = await hass.config_entries.subentries.async_configure(
+        result3["flow_id"],
+        user_input={"type": "shutter"},
+    )
+    assert result4["type"] == FlowResultType.FORM
+    assert result4["step_id"] == "edit_output_down"
+
+    # Change down_output from 2 to 4 (2 was occupied, now freed)
+    result5 = await hass.config_entries.subentries.async_configure(
+        result4["flow_id"],
+        user_input={"up_output": 1, "down_output": 4},
+    )
+    assert result5["type"] == FlowResultType.ABORT
+    assert result5["reason"] == "reconfigure_successful"
+
+    sub = entry.subentries[sub_id]
+    assert sub.data["outputs"]["1"]["down_output"] == 4
+
+
+async def test_subentry_edit_output_no_outputs_aborts(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """Navigating to edit_output on a module with no outputs aborts."""
+    entry = await _setup_loaded_entry(
+        hass,
+        mock_controller,
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_MODULE,
+                "title": "Module A",
+                "unique_id": "module:A",
+                "data": {"module": "A", "dimmable": False, "outputs": {}},
+            }
+        ],
+    )
+    sub_id = next(iter(entry.subentries))
+
+    flow = ModuleSubentryFlowHandler()
+    flow.hass = hass
+    flow.handler = (entry.entry_id, SUBENTRY_TYPE_MODULE)
+    flow.context = {"source": "reconfigure", "subentry_id": sub_id}
+
+    result = await flow.async_step_edit_output(None)
+
+    assert result["type"] == FlowResultType.ABORT
+    assert result["reason"] == "no_outputs_to_edit"
+
+
+async def test_subentry_edit_output_menu_visible(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """edit_output appears in the reconfigure menu when outputs exist."""
+    entry = await _setup_loaded_entry(
+        hass,
+        mock_controller,
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_MODULE,
+                "title": "Module A",
+                "unique_id": "module:A",
+                "data": {
+                    "module": "A",
+                    "dimmable": False,
+                    "outputs": {"1": {"type": "light", "name": "L1"}},
+                },
+            }
+        ],
+    )
+    sub_id = next(iter(entry.subentries))
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_MODULE),
+        context={"source": "reconfigure", "subentry_id": sub_id},
+    )
+    assert result["type"] == FlowResultType.MENU
+    assert "edit_output" in result["menu_options"]
+
+
+# ---------------------------------------------------------------------------
 # ModuleSubentryFlowHandler.async_step_edit_module
 # ---------------------------------------------------------------------------
 
@@ -1932,21 +2292,18 @@ async def test_import_creates_subentries(
     entry = await _setup_entry_with_master(hass, mock_controller)
 
     modules = [("A", 0), ("B", 1)]
-    output_names = {}
-    output_names[(0, 0)] = "Kitchen"
-    output_names[(0, 2)] = "Living"
-    output_names[(1, 0)] = "Bedroom"
-
-    def mock_download_output_name(mod_idx, out_idx):
-        return output_names.get((mod_idx, out_idx))
+    module_names = {
+        0: {0: "Kitchen", 2: "Living"},
+        1: {0: "Bedroom"},
+    }
 
     with patch(
         "custom_components.dobiss_sx_evolution.config_flow.Max200SerialClient"
     ) as mock_client_cls:
         mock_client = mock_client_cls.return_value
         mock_client.download_config = MagicMock(return_value=modules)
-        mock_client.download_output_name = MagicMock(
-            side_effect=mock_download_output_name
+        mock_client.download_module_output_names = MagicMock(
+            side_effect=lambda mod_idx, count: module_names.get(mod_idx, {})
         )
 
         result = await hass.config_entries.subentries.async_init(
@@ -2088,22 +2445,17 @@ async def test_import_prefers_tcp_over_serial(
 async def test_import_continues_on_output_download_failure(
     hass: HomeAssistant, mock_controller, mock_coordinator_serial
 ) -> None:
-    """Import continues when download_output_name fails for individual outputs."""
+    """Import continues when download_module_output_names fails."""
     entry = await _setup_entry_with_master(hass, mock_controller)
-
-    def _download_output_name(module_index, output_index):
-        if output_index == 1:
-            raise ConnectionError("Serial timeout")
-        if output_index == 0:
-            return "Kitchen"
-        return None
 
     with patch(
         "custom_components.dobiss_sx_evolution.config_flow.Max200SerialClient"
     ) as mock_client_cls:
         mock_client = mock_client_cls.return_value
         mock_client.download_config = MagicMock(return_value=[("A", 0)])
-        mock_client.download_output_name = MagicMock(side_effect=_download_output_name)
+        mock_client.download_module_output_names = MagicMock(
+            side_effect=ConnectionError("Serial timeout")
+        )
 
         result = await hass.config_entries.subentries.async_init(
             (entry.entry_id, SUBENTRY_TYPE_MODULE_IMPORT),
@@ -2120,9 +2472,7 @@ async def test_import_continues_on_output_download_failure(
     ]
     assert len(module_subs) == 1
     outputs = module_subs[0].data["outputs"]
-    assert "1" in outputs
-    assert outputs["1"]["name"] == "Kitchen"
-    assert "2" not in outputs  # output_index 1 failed, so output 2 not imported
+    assert outputs == {}  # batch download failed, module created with no outputs
 
 
 async def test_import_skips_existing_modules(
@@ -2147,7 +2497,7 @@ async def test_import_skips_existing_modules(
     ) as mock_client_cls:
         mock_client = mock_client_cls.return_value
         mock_client.download_config = MagicMock(return_value=[("A", 0), ("B", 1)])
-        mock_client.download_output_name = MagicMock(return_value=None)
+        mock_client.download_module_output_names = MagicMock(return_value={})
 
         result = await hass.config_entries.subentries.async_init(
             (entry.entry_id, SUBENTRY_TYPE_MODULE_IMPORT),

@@ -280,6 +280,7 @@ class DobissController:
             self._bus,
             [reader],
             timeout=0.1,
+            loop=asyncio.get_running_loop(),
         )
         self._reader = reader
         self._notifier = notifier

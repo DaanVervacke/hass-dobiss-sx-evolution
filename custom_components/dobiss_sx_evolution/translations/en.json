@@ -12,15 +12,15 @@
           "host": "socketcand host",
           "port": "socketcand port",
           "interface": "CAN interface",
-          "master_device": "Master module serial port",
-          "max200_host": "Max200 TCP host"
+          "master_device": "Max200 (DO5120) serial port",
+          "max200_host": "Max200 (DO5120) TCP host"
         },
         "data_description": {
           "host": "Hostname or IP address of the machine running socketcand. For example: 192.168.1.10 or homeserver.local.",
           "port": "TCP port socketcand is listening on. The default for this integration is 29536.",
           "interface": "Name of the CAN interface on the socketcand host. The default for this integration is can0.",
-          "master_device": "Serial port of the master module (SX-kabel via USB adapter). Optional, enables clock sync and module import.",
-          "max200_host": "Hostname or IP address of the Max200 controller. Optional, enables clock sync and module import over TCP as alternative to the serial port."
+          "master_device": "Serial port of the Max200 master module (SX-kabel). Optional, enables clock sync and module import.",
+          "max200_host": "Hostname or IP address of the Max200 master module. Optional, enables clock sync and module import."
         }
       },
       "reauth_socketcand": {
@@ -30,15 +30,15 @@
           "host": "socketcand host",
           "port": "socketcand port",
           "interface": "CAN interface",
-          "master_device": "Master module serial port",
-          "max200_host": "Max200 TCP host"
+          "master_device": "Max200 (DO5120) serial port",
+          "max200_host": "Max200 (DO5120) TCP host"
         },
         "data_description": {
           "host": "Hostname or IP address of the machine running socketcand.",
           "port": "TCP port socketcand is listening on (default 29536).",
           "interface": "Name of the CAN interface on the socketcand host (typically can0).",
-          "master_device": "Serial port of the master module (SX-kabel via USB adapter). Optional, enables clock sync and module import.",
-          "max200_host": "Hostname or IP address of the Max200 controller. Optional, enables clock sync and module import over TCP as alternative to the serial port."
+          "master_device": "Serial port of the Max200 master module (SX-kabel). Optional, enables clock sync and module import.",
+          "max200_host": "Hostname or IP address of the Max200 master module. Optional, enables clock sync and module import."
         }
       },
       "reauth_usb": {
@@ -46,13 +46,13 @@
         "description": "Home Assistant lost the connection. Confirm or update the USB CAN adapter details below.",
         "data": {
           "device": "Device path",
-          "master_device": "Master module serial port",
-          "max200_host": "Max200 TCP host"
+          "master_device": "Max200 (DO5120) serial port",
+          "max200_host": "Max200 (DO5120) TCP host"
         },
         "data_description": {
           "device": "Path to the serial device.",
-          "master_device": "Serial port of the master module (SX-kabel via USB adapter). Optional, enables clock sync and module import.",
-          "max200_host": "Hostname or IP address of the Max200 controller. Optional, enables clock sync and module import over TCP as alternative to the serial port."
+          "master_device": "Serial port of the Max200 master module (SX-kabel). Optional, enables clock sync and module import.",
+          "max200_host": "Hostname or IP address of the Max200 master module. Optional, enables clock sync and module import."
         }
       },
       "usb_manual": {
@@ -60,13 +60,13 @@
         "description": "Connect directly to a USB CAN adapter like Canable, Lawicel, or other compatible devices.",
         "data": {
           "device": "Device path",
-          "master_device": "Master module serial port",
-          "max200_host": "Max200 TCP host"
+          "master_device": "Max200 (DO5120) serial port",
+          "max200_host": "Max200 (DO5120) TCP host"
         },
         "data_description": {
           "device": "Path to the serial device. On Linux: /dev/ttyACM0, /dev/ttyUSB0. On Windows: COM3, COM4, etc.",
-          "master_device": "Serial port of the master module (SX-kabel via USB adapter). Optional, enables clock sync and module import.",
-          "max200_host": "Hostname or IP address of the Max200 controller. Optional, enables clock sync and module import over TCP as alternative to the serial port."
+          "master_device": "Serial port of the Max200 master module (SX-kabel). Optional, enables clock sync and module import.",
+          "max200_host": "Hostname or IP address of the Max200 master module. Optional, enables clock sync and module import."
         }
       },
       "reconfigure": {
@@ -86,15 +86,15 @@
           "host": "socketcand host",
           "port": "socketcand port",
           "interface": "CAN interface",
-          "master_device": "Master module serial port",
-          "max200_host": "Max200 TCP host"
+          "master_device": "Max200 (DO5120) serial port",
+          "max200_host": "Max200 (DO5120) TCP host"
         },
         "data_description": {
           "host": "Hostname or IP address of the machine running socketcand.",
           "port": "TCP port socketcand is listening on (default 29536).",
           "interface": "Name of the CAN interface on the socketcand host (typically can0).",
-          "master_device": "Serial port of the master module (SX-kabel via USB adapter). Optional, enables clock sync and module import.",
-          "max200_host": "Hostname or IP address of the Max200 controller. Optional, enables clock sync and module import over TCP as alternative to the serial port."
+          "master_device": "Serial port of the Max200 master module (SX-kabel). Optional, enables clock sync and module import.",
+          "max200_host": "Hostname or IP address of the Max200 master module. Optional, enables clock sync and module import."
         }
       },
       "reconfigure_usb": {
@@ -102,13 +102,13 @@
         "description": "Update the USB CAN adapter connection details for the DOBISS SX Evolution CAN bus.",
         "data": {
           "device": "Device path",
-          "master_device": "Master module serial port",
-          "max200_host": "Max200 TCP host"
+          "master_device": "Max200 (DO5120) serial port",
+          "max200_host": "Max200 (DO5120) TCP host"
         },
         "data_description": {
           "device": "Path to the serial device.",
-          "master_device": "Serial port of the master module (SX-kabel via USB adapter). Optional, enables clock sync and module import.",
-          "max200_host": "Hostname or IP address of the Max200 controller. Optional, enables clock sync and module import over TCP as alternative to the serial port."
+          "master_device": "Serial port of the Max200 master module (SX-kabel). Optional, enables clock sync and module import.",
+          "max200_host": "Hostname or IP address of the Max200 master module. Optional, enables clock sync and module import."
         }
       }
     },
@@ -210,6 +210,7 @@
             "add_shutter": "Add a shutter",
             "add_switch": "Add a switch",
             "remove_output": "Remove an output",
+            "edit_output": "Change output type",
             "edit_module": "Edit module settings"
           }
         },
@@ -261,6 +262,38 @@
             "output": "Lists every output currently configured on this module."
           }
         },
+        "edit_output": {
+          "title": "Change output type",
+          "description": "Pick the output you want to change.",
+          "data": {
+            "output": "Output"
+          },
+          "data_description": {
+            "output": "Lists every output currently configured on this module."
+          }
+        },
+        "edit_output_type": {
+          "title": "Change output type",
+          "description": "Pick the new type for this output.",
+          "data": {
+            "type": "Type"
+          },
+          "data_description": {
+            "type": "The entity type: light, shutter, or switch."
+          }
+        },
+        "edit_output_down": {
+          "title": "Shutter outputs",
+          "description": "Shutters use two outputs on the same module: one drives the motor up and the other drives it down.",
+          "data": {
+            "up_output": "Up output",
+            "down_output": "Down output"
+          },
+          "data_description": {
+            "up_output": "The output number wired to the motor's UP direction.",
+            "down_output": "The output number wired to the motor's DOWN direction. Must differ from the up output."
+          }
+        },
         "edit_module": {
           "title": "Edit module settings",
           "description": "Update this module's letter, name, or dimmer setting. Toggling the dimmer flag applies to every light already on this module. They will switch between brightness-capable and on/off after the next reload.",
@@ -286,7 +319,8 @@
       },
       "abort": {
         "reconfigure_successful": "Module updated.",
-        "no_outputs_to_remove": "This module doesn't have any outputs to remove yet."
+        "no_outputs_to_remove": "This module doesn't have any outputs to remove yet.",
+        "no_outputs_to_edit": "This module doesn't have any outputs to edit yet."
       }
     }
   },
@@ -299,6 +333,15 @@
     "sensor": {
       "reconnect_count": {
         "name": "CAN bus reconnections"
+      }
+    }
+  },
+  "selector": {
+    "output_type": {
+      "options": {
+        "light": "Light",
+        "shutter": "Shutter",
+        "switch": "Switch"
       }
     }
   },
