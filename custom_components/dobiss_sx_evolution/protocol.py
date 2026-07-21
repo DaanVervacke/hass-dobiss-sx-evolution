@@ -24,7 +24,9 @@ class StateUpdate:
 
 
 def to_bcd(value: int) -> int:
-    """Encode a decimal value as BCD (ConversieVars.To from MaxTool)."""
+    """Encode a decimal value (0-99) as BCD (ConversieVars.To from MaxTool)."""
+    if not 0 <= value <= 99:
+        raise ValueError(f"BCD value out of range: {value}")
     return (value // 10) * 16 + (value % 10)
 
 

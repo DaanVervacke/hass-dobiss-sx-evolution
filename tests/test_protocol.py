@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
+import pytest
+
 from custom_components.dobiss_sx_evolution.protocol import (
     DUMP_REQUEST_FRAME,
     MOOD_ADDRESS_BYTE,
@@ -304,6 +306,21 @@ def test_to_bcd_matches_inline_expression():
     """to_bcd(n) must equal the original inline (n // 10) * 16 + (n % 10)."""
     for n in range(100):
         assert to_bcd(n) == (n // 10) * 16 + (n % 10)
+
+
+def test_to_bcd_rejects_negative():
+    with pytest.raises(ValueError, match="BCD value out of range"):
+        to_bcd(-1)
+
+
+def test_to_bcd_rejects_100():
+    with pytest.raises(ValueError, match="BCD value out of range"):
+        to_bcd(100)
+
+
+def test_to_bcd_accepts_boundary_values():
+    assert to_bcd(0) == 0x00
+    assert to_bcd(99) == 0x99
 
 
 # ---------------------------------------------------------------------------
