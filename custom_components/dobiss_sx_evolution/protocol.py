@@ -163,12 +163,14 @@ def parse_output_name(data: bytes) -> str | None:
     """Parse a 32-byte UitgangVars response into an output name.
 
     Returns None if the output is unconfigured (byte 1 == 0xFF).
+    Non-printable and non-ASCII bytes are dropped.
     """
     if len(data) < OUTPUT_NAME_RESPONSE_SIZE:
         return None
     if data[1] == 0xFF:
         return None
-    name = bytes(data[:31]).decode("ascii", errors="replace").strip("\x00").strip()
+    raw = bytes(data[:31])
+    name = "".join(chr(b) for b in raw if 0x20 <= b <= 0x7E).strip()
     return name or None
 
 

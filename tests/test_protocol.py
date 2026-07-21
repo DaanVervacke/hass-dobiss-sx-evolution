@@ -474,6 +474,29 @@ def test_parse_output_name_empty_name():
     assert parse_output_name(data) is None
 
 
+def test_parse_output_name_strips_control_bytes():
+    """Embedded ESC and BEL bytes are dropped, leaving the clean name."""
+    data = bytearray(32)
+    name = b"\x1bKitchen\x07 ceiling"
+    data[: len(name)] = name
+    assert parse_output_name(bytes(data)) == "Kitchen ceiling"
+
+
+def test_parse_output_name_only_control_bytes():
+    """A name field made entirely of control bytes returns None."""
+    data = bytearray(32)
+    data[:31] = bytes([0x01, 0x02, 0x03, 0x1B, 0x07] + [0x00] * 26)
+    assert parse_output_name(bytes(data)) is None
+
+
+def test_parse_output_name_strips_high_bytes():
+    """Bytes above 0x7E are dropped, leaving the printable remainder."""
+    data = bytearray(32)
+    name = b"Kitc\xe9hen"
+    data[: len(name)] = name
+    assert parse_output_name(bytes(data)) == "Kitchen"
+
+
 # ---------------------------------------------------------------------------
 # build_mood_frame
 # ---------------------------------------------------------------------------
