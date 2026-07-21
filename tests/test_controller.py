@@ -21,6 +21,7 @@ from custom_components.dobiss_sx_evolution.controller import (
 )
 from custom_components.dobiss_sx_evolution.protocol import (
     StateUpdate,
+    can_tx_to_rx,
     ha_to_can_brightness,
 )
 
@@ -729,7 +730,7 @@ async def test_turn_on_dimmable_with_brightness(hass: HomeAssistant) -> None:
     _, data = ctrl._send_frame.call_args[0]
     expected = ha_to_can_brightness(128)
     assert data[3] == expected
-    assert ctrl.states[("A", 2)] == expected
+    assert ctrl.states[("A", 2)] == can_tx_to_rx(expected)
 
 
 async def test_turn_on_dimmable_no_brightness_sends_max(hass: HomeAssistant) -> None:
@@ -739,7 +740,7 @@ async def test_turn_on_dimmable_no_brightness_sends_max(hass: HomeAssistant) -> 
     await ctrl.async_turn_on(("A", 2))
     _, data = ctrl._send_frame.call_args[0]
     assert data[3] == MAX_CAN_BRIGHTNESS_TX
-    assert ctrl.states[("A", 2)] == MAX_CAN_BRIGHTNESS_TX
+    assert ctrl.states[("A", 2)] == can_tx_to_rx(MAX_CAN_BRIGHTNESS_TX)
 
 
 async def test_turn_off_sends_zero_and_clears_state(hass: HomeAssistant) -> None:

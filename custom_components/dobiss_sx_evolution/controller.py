@@ -33,6 +33,7 @@ from .protocol import (
     StateUpdate,
     build_mood_frame,
     build_state_frame,
+    can_tx_to_rx,
     ha_to_can_brightness,
     parse_state_frame,
 )
@@ -335,7 +336,7 @@ class DobissController:
         else:
             value = 1
         await self._send_state(module, output, value)
-        self._apply_local(key, value)
+        self._apply_local(key, can_tx_to_rx(value) if self.dimmable(key) else value)
 
     async def async_turn_off(self, key: OutputKey) -> None:
         """Send an OFF write."""

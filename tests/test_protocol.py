@@ -14,6 +14,7 @@ from custom_components.dobiss_sx_evolution.protocol import (
     build_output_name_intro,
     build_state_frame,
     can_to_ha_brightness,
+    can_tx_to_rx,
     ha_to_can_brightness,
     output_name_eeprom_addr,
     parse_config_response,
@@ -257,6 +258,31 @@ def test_ha_to_can_brightness_positive_never_zero():
     for ha in range(1, 256):
         result = ha_to_can_brightness(ha)
         assert result >= 16, f"ha={ha} gave {result}, expected >= 16"
+
+
+def test_can_tx_to_rx_zero():
+    assert can_tx_to_rx(0) == 0
+
+
+def test_can_tx_to_rx_all_dimmer_steps():
+    """Every valid TX step (multiples of 16) maps to an exact RX value."""
+    expected = [
+        (16, 10),
+        (32, 20),
+        (48, 30),
+        (64, 40),
+        (80, 50),
+        (96, 60),
+        (112, 70),
+        (128, 80),
+        (144, 90),
+    ]
+    for tx, rx in expected:
+        assert can_tx_to_rx(tx) == rx, f"can_tx_to_rx({tx}) should be {rx}"
+
+
+def test_can_tx_to_rx_max():
+    assert can_tx_to_rx(144) == 90
 
 
 # ---------------------------------------------------------------------------

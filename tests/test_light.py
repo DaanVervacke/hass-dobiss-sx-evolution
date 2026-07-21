@@ -22,6 +22,7 @@ from custom_components.dobiss_sx_evolution.const import (
 )
 from custom_components.dobiss_sx_evolution.protocol import (
     can_to_ha_brightness,
+    can_tx_to_rx,
     ha_to_can_brightness,
 )
 
@@ -334,7 +335,7 @@ async def test_optimistic_brightness_retained_on_matching_echo(
     )
 
     coordinator = entry.runtime_data
-    echo_can_value = ha_to_can_brightness(128)
+    echo_can_value = can_tx_to_rx(ha_to_can_brightness(128))
     coordinator.controller.states = {("A", 1): echo_can_value}
     coordinator.async_set_updated_data(dict(coordinator.controller.states))
     await hass.async_block_till_done()

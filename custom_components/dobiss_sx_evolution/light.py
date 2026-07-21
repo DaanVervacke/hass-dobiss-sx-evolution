@@ -17,7 +17,7 @@ from .const import MAX_CAN_BRIGHTNESS_TX, SUBENTRY_TYPE_MODULE
 from .controller import OutputKey
 from .coordinator import DobissConfigEntry, DobissCoordinator
 from .entity import DobissEntity
-from .protocol import can_to_ha_brightness, ha_to_can_brightness
+from .protocol import can_to_ha_brightness, can_tx_to_rx, ha_to_can_brightness
 
 # Each write goes directly to the CAN bus - no shared resource needs
 # serialisation at the platform level.
@@ -139,7 +139,9 @@ class DobissLight(DobissEntity, LightEntity):
                 # value we are about to send so _handle_coordinator_update can
                 # recognise the echo as ours.
                 self._attr_brightness = ha_brightness
-                self._optimistic_can_value = ha_to_can_brightness(ha_brightness)
+                self._optimistic_can_value = can_tx_to_rx(
+                    ha_to_can_brightness(ha_brightness)
+                )
             else:
                 # Turning on without an explicit brightness sends the
                 # controller's "full on" CAN value (MAX_CAN_BRIGHTNESS_TX).
@@ -147,7 +149,7 @@ class DobissLight(DobissEntity, LightEntity):
                 # (0-90), so feeding it the TX-scale value overflows past 255.
                 # Set the optimistic HA-native brightness directly instead.
                 self._attr_brightness = 255
-                self._optimistic_can_value = MAX_CAN_BRIGHTNESS_TX
+                self._optimistic_can_value = can_tx_to_rx(MAX_CAN_BRIGHTNESS_TX)
         try:
             await self.coordinator.controller.async_turn_on(
                 self._key, brightness=ha_brightness

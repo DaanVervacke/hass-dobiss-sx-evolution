@@ -10,6 +10,7 @@ from .const import (
     CAN_ID_STATE_DUMP,
     CAN_ID_TX_STATE,
     MAX_CAN_BRIGHTNESS_RX,
+    MAX_CAN_BRIGHTNESS_TX,
 )
 
 
@@ -190,3 +191,10 @@ def ha_to_can_brightness(ha_brightness: int) -> int:
         return 0
     steps = round(ha_brightness * 9 / 255)
     return max(1, steps) * BRIGHTNESS_STEP
+
+
+def can_tx_to_rx(tx_value: int) -> int:
+    """Convert CAN TX brightness (0-144) to expected RX echo value (0-90)."""
+    if tx_value <= 0:
+        return 0
+    return round(tx_value * MAX_CAN_BRIGHTNESS_RX / MAX_CAN_BRIGHTNESS_TX)
