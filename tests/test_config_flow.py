@@ -12,6 +12,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.dobiss_sx_evolution.config_flow import (
     DobissConfigFlow,
+    ModuleImportSubentryFlowHandler,
     ModuleSubentryFlowHandler,
     _occupied_outputs_in_module,
     _validate_module,
@@ -1022,6 +1023,40 @@ async def test_subentry_add_shutter_down_output_zero_rejected(
     assert result3["errors"]["down_output"] == "invalid_output"
 
 
+async def test_subentry_add_shutter_up_output_zero_rejected(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """up_output below 1 is rejected."""
+    entry = await _setup_loaded_entry(
+        hass,
+        mock_controller,
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_MODULE,
+                "title": "Module A",
+                "unique_id": "module:A",
+                "data": {"module": "A", "dimmable": False, "outputs": {}},
+            }
+        ],
+    )
+    sub_id = next(iter(entry.subentries))
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_MODULE),
+        context={"source": "reconfigure", "subentry_id": sub_id},
+    )
+    result2 = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        user_input={"next_step_id": "add_shutter"},
+    )
+    result3 = await hass.config_entries.subentries.async_configure(
+        result2["flow_id"],
+        user_input={"up_output": 0, "down_output": 2, "name": "Bad"},
+    )
+    assert result3["type"] == FlowResultType.FORM
+    assert result3["errors"]["up_output"] == "invalid_output"
+
+
 async def test_subentry_add_shutter_down_output_too_high(
     hass: HomeAssistant, mock_controller
 ) -> None:
@@ -1848,6 +1883,46 @@ async def test_import_creates_subentries(
     assert b_outputs["1"]["name"] == "Bedroom"
 
 
+async def test_import_continues_on_output_download_failure(
+    hass: HomeAssistant, mock_controller, mock_coordinator_serial
+) -> None:
+    """Import continues when download_output_name fails for individual outputs."""
+    entry = await _setup_entry_with_master(hass, mock_controller)
+
+    def _download_output_name(module_index, output_index):
+        if output_index == 1:
+            raise ConnectionError("Serial timeout")
+        if output_index == 0:
+            return "Kitchen"
+        return None
+
+    with patch(
+        "custom_components.dobiss_sx_evolution.config_flow.Max200SerialClient"
+    ) as mock_client_cls:
+        mock_client = mock_client_cls.return_value
+        mock_client.download_config = MagicMock(return_value=[("A", 0)])
+        mock_client.download_output_name = MagicMock(side_effect=_download_output_name)
+
+        result = await hass.config_entries.subentries.async_init(
+            (entry.entry_id, SUBENTRY_TYPE_MODULE_IMPORT),
+            context={"source": "user"},
+        )
+
+    assert result["type"] == FlowResultType.ABORT
+    assert result["reason"] == "import_successful"
+
+    module_subs = [
+        sub
+        for sub in entry.subentries.values()
+        if sub.subentry_type == SUBENTRY_TYPE_MODULE
+    ]
+    assert len(module_subs) == 1
+    outputs = module_subs[0].data["outputs"]
+    assert "1" in outputs
+    assert outputs["1"]["name"] == "Kitchen"
+    assert "2" not in outputs  # output_index 1 failed, so output 2 not imported
+
+
 async def test_import_skips_existing_modules(
     hass: HomeAssistant, mock_controller, mock_coordinator_serial
 ) -> None:
@@ -1944,6 +2019,29 @@ async def test_import_serial_failure(
     assert result["reason"] == "import_failed"
 
 
+async def test_import_aborts_without_master_device(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """Import flow aborts when no master_device is configured.
+
+    The import subentry type is hidden from async_get_supported_subentry_types
+    when master_device is absent, so it cannot be reached through the normal
+    subentries.async_init flow manager (that raises UnknownHandler). The
+    no_master_device guard is a defensive check inside the handler itself, so
+    it is exercised by invoking the handler's step method directly.
+    """
+    entry = await _setup_loaded_entry(hass, mock_controller)
+    assert CONF_MASTER_DEVICE not in entry.data
+
+    flow = ModuleImportSubentryFlowHandler()
+    flow.hass = hass
+    flow.handler = (entry.entry_id, SUBENTRY_TYPE_MODULE_IMPORT)
+
+    result = await flow.async_step_user(None)
+    assert result["type"] == FlowResultType.ABORT
+    assert result["reason"] == "no_master_device"
+
+
 # ---------------------------------------------------------------------------
 # Mood subentry flow
 # ---------------------------------------------------------------------------
@@ -2023,3 +2121,39 @@ async def test_add_mood_duplicate(hass: HomeAssistant, mock_controller) -> None:
     )
     assert result["type"] == FlowResultType.FORM
     assert result["errors"]["mood_number"] == "mood_already_exists"
+
+
+async def test_mood_reconfigure_rename(hass: HomeAssistant, mock_controller) -> None:
+    """Reconfiguring a mood updates its title."""
+    entry = await _setup_loaded_entry(
+        hass,
+        mock_controller,
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_MOOD,
+                "title": "Mood 5",
+                "unique_id": "mood:5",
+                "data": {"mood_number": 5},
+            }
+        ],
+    )
+    sub_id = next(
+        sid
+        for sid, sub in entry.subentries.items()
+        if sub.subentry_type == SUBENTRY_TYPE_MOOD
+    )
+
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_MOOD),
+        context={"source": "reconfigure", "subentry_id": sub_id},
+    )
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "reconfigure"
+
+    result2 = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        user_input={"name": "Evening Ambiance"},
+    )
+    assert result2["type"] == FlowResultType.ABORT
+    assert result2["reason"] == "reconfigure_successful"
+    assert entry.subentries[sub_id].title == "Evening Ambiance"

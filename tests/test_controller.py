@@ -302,6 +302,48 @@ async def test_collect_initial_state_drains_all_frames(hass: HomeAssistant) -> N
     assert call_count >= 2, f"Expected at least 2 get_message calls, got {call_count}"
 
 
+async def test_collect_initial_state_warns_on_missing_modules(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Discovery warns when not all configured modules respond."""
+    ctrl = DobissController(
+        hass,
+        connection=_TEST_CONNECTION,
+        lights=[("A", 1), ("B", 1)],
+        dimmers=set(),
+        shutters=[],
+        entry_id="test_missing_modules",
+    )
+
+    msg_a1 = _make_fake_message("A", 1, 1)
+
+    call_count = 0
+
+    async def fake_get_message():
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return msg_a1
+        # Module "B" never responds; simulate idle-out.
+        await _real_sleep(_DUMP_DRAIN_IDLE_S + 0.05)
+        raise TimeoutError
+
+    fake_reader = MagicMock()
+    fake_reader.get_message = fake_get_message
+
+    ctrl._bus = MagicMock()
+    ctrl._reader = fake_reader
+
+    with (
+        patch.object(ctrl, "_send_frame", new=AsyncMock()),
+        caplog.at_level("WARNING"),
+    ):
+        await ctrl._collect_initial_state()
+
+    assert "missing modules" in caplog.text
+    assert "'B'" in caplog.text
+
+
 async def test_read_frames_reuses_existing_reader(hass: HomeAssistant) -> None:
     """_read_frames must use self._reader when already set (no new Notifier created)."""
     ctrl = _make_controller(hass)

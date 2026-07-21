@@ -67,3 +67,22 @@ async def test_diagnostics_usb_redacts_device(
     assert connection["device"] == REDACTED
     assert connection["baudrate"] == conn.baudrate
     assert connection["can_interface"] == conn.can_interface
+
+
+async def test_diagnostics_redacts_master_device(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """master_device is redacted in diagnostics output."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=_make_entry_data(master_device="/dev/ttyUSB1"),
+        title="DOBISS",
+        version=1,
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entry.state is ConfigEntryState.LOADED
+
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+    assert diagnostics["connection"]["master_device"] == REDACTED
