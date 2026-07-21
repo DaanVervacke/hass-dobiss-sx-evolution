@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -17,6 +17,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.event import async_call_later, async_track_time_interval
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
 from .const import (
     CLOCK_SYNC_INTERVAL_HOURS,
@@ -182,7 +183,7 @@ class DobissCoordinator(DataUpdateCoordinator[dict[OutputKey, int]]):
             return
         try:
             await self.hass.async_add_executor_job(
-                self.serial_client.sync_clock, datetime.now()
+                self.serial_client.sync_clock, dt_util.now()
             )
         except Exception:  # noqa: BLE001
             _LOGGER.warning("Clock sync to Max200 failed", exc_info=True)

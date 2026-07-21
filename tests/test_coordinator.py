@@ -350,6 +350,33 @@ async def test_coordinator_clock_sync_on_setup(
         mock_serial.sync_clock.assert_called_once()
 
 
+async def test_coordinator_clock_sync_uses_ha_timezone(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """Clock sync must use HA-configured timezone, not process-local time."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=_make_entry_data(master_device="/dev/ttyUSB1"),
+        title="DOBISS",
+        version=1,
+    )
+    entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.dobiss_sx_evolution.coordinator.Max200SerialClient"
+    ) as mock_serial_cls:
+        mock_serial = mock_serial_cls.return_value
+        mock_serial.device = "/dev/ttyUSB1"
+        mock_serial.sync_clock = MagicMock()
+
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+        mock_serial.sync_clock.assert_called_once()
+        call_dt = mock_serial.sync_clock.call_args[0][0]
+        assert call_dt.tzinfo is not None, "Clock sync datetime must be timezone-aware"
+
+
 async def test_coordinator_clock_sync_periodic(
     hass: HomeAssistant, mock_controller
 ) -> None:
