@@ -8,6 +8,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 import serial
 
+from custom_components.dobiss_sx_evolution.const import (
+    SERIAL_HANDSHAKE_RETRIES,
+    SERIAL_RETRY_DELAY_S,
+)
 from custom_components.dobiss_sx_evolution.protocol import to_bcd
 from custom_components.dobiss_sx_evolution.serial_client import Max200SerialClient
 
@@ -105,6 +109,35 @@ def test_serial_exception_wrapped_in_connection_error(mock_serial_cls, _mock_sle
     with pytest.raises(ConnectionError, match="device gone"):
         client.sync_clock(datetime(2026, 1, 1))
 
+    port.close.assert_called_once()
+    # Sleeps happen between attempts only, never after the last exhausted one.
+    assert _mock_sleep.call_count == SERIAL_HANDSHAKE_RETRIES - 1
+    for call in _mock_sleep.call_args_list:
+        assert call.args == (SERIAL_RETRY_DELAY_S,)
+
+
+@patch("custom_components.dobiss_sx_evolution.serial_client.time.sleep")
+@patch("custom_components.dobiss_sx_evolution.serial_client.serial.Serial")
+def test_handshake_serial_exception_then_succeeds(mock_serial_cls, _mock_sleep):
+    """First handshake attempt raises SerialException; second attempt succeeds."""
+    port = MagicMock()
+    port.read = MagicMock(side_effect=[b"M", b"M", bytes([ord("K")])])
+    port.write = MagicMock(
+        side_effect=[serial.SerialException("transient"), None, None]
+    )
+    port.reset_input_buffer = MagicMock()
+    port.close = MagicMock()
+    mock_serial_cls.return_value = port
+
+    client = Max200SerialClient("/dev/ttyUSB1")
+    client.sync_clock(datetime(2026, 1, 1))
+
+    retry_sleeps = [
+        call
+        for call in _mock_sleep.call_args_list
+        if call.args == (SERIAL_RETRY_DELAY_S,)
+    ]
+    assert len(retry_sleeps) == 1
     port.close.assert_called_once()
 
 
@@ -229,6 +262,33 @@ def test_download_module_output_names(mock_serial_cls, _mock_sleep):
 
     assert result == {0: "Lamp", 2: "Switch"}
     port.write.assert_any_call(b"u1")
+    port.close.assert_called_once()
+
+
+@patch("custom_components.dobiss_sx_evolution.serial_client.time.sleep")
+@patch("custom_components.dobiss_sx_evolution.serial_client.serial.Serial")
+def test_batch_download_port_closed_on_read_failure(mock_serial_cls, _mock_sleep):
+    """Port is closed even when a read fails mid-batch."""
+    name0 = bytearray(32)
+    name0[:4] = b"Lamp"
+
+    port = MagicMock()
+    port.read = MagicMock(
+        side_effect=[
+            b"M",
+            bytes([ord("u")]),
+            bytes(name0),
+            serial.SerialException("read failed"),
+        ]
+    )
+    port.reset_input_buffer = MagicMock()
+    port.close = MagicMock()
+    mock_serial_cls.return_value = port
+
+    client = Max200SerialClient("/dev/ttyUSB1")
+    with pytest.raises(serial.SerialException, match="read failed"):
+        client.download_module_output_names(0, 12)
+
     port.close.assert_called_once()
 
 
