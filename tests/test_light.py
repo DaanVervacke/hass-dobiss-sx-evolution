@@ -30,7 +30,7 @@ from .conftest import MOCK_CONFIG, MOCK_CONNECTION
 
 # Subentry data shape as produced by async_step_add_light:
 # - "dimmable" lives at the module (subentry) level, not per-output.
-# - Per-output dict only has "type" and "name"; never has a "dimmable" key.
+# - Per-output dict only has "type" and "name", never has a "dimmable" key.
 
 
 def _subentry_data(*, dimmable: bool, title: str = "Module A") -> dict:
@@ -85,10 +85,10 @@ async def _setup(
     fake_ctrl.lights = lights
     fake_ctrl.dimmers = dimmers
     fake_ctrl.shutters = []
-    # State of 100 for dimmable so brightness is non-zero; 1 for on/off.
+    # State of 100 for dimmable so brightness is non-zero, 1 for on/off.
     fake_ctrl.states = {output_key: 100 if dimmable else 1}
     fake_ctrl.reconnect_count = 0
-    fake_ctrl._bus = object()  # truthy — avoids UpdateFailed
+    fake_ctrl._bus = object()  # truthy, avoids UpdateFailed
 
     fake_ctrl.async_setup = AsyncMock(return_value=None)
     fake_ctrl.async_shutdown = AsyncMock(return_value=None)
@@ -218,7 +218,7 @@ async def test_light_friendly_name_includes_device_and_output(
 
     HA core computes friendly_name as "<device name> <entity name>" for all
     entities associated with a device.  The subentry title becomes the device
-    name; the output name from setup is the entity name.
+    name. The output name from setup is the entity name.
     """
     await _setup(hass, dimmable=False, title="Living Room Panel")
 

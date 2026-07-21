@@ -20,7 +20,7 @@ class StateUpdate:
 
     module: str
     output: int  # 1-indexed
-    state: int  # 0 = off; 1..MAX_CAN_BRIGHTNESS_RX for dimmable echo
+    state: int  # 0 = off, 1..MAX_CAN_BRIGHTNESS_RX for dimmable echo
 
 
 def to_bcd(value: int) -> int:
@@ -81,7 +81,7 @@ def build_state_frame(module: str, output: int, state: int) -> tuple[int, bytes]
     """Build a (can_id, payload) tuple for a state write.
 
     DOBISS expects BCD encoding for the output byte:
-    zero-indexed output 10 → 0x10 (not 0x0A), 11 → 0x11, etc.
+    zero-indexed output 10 -> 0x10 (not 0x0A), 11 -> 0x11, etc.
     """
     if len(module) != 1:
         return None

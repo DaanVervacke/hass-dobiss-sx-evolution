@@ -72,7 +72,7 @@ async def async_get_config_entry_diagnostics(
         "controller": {
             "modules": list(ctrl.modules),
             "lights": [list(k) for k in ctrl.lights],
-            "dimmers": [list(k) for k in ctrl.dimmers],
+            "dimmers": sorted([list(k) for k in ctrl.dimmers]),
             "shutters": [asdict(s) for s in ctrl.shutters],
             "switches": [list(k) for k in ctrl.switches],
             "reconnect_count": ctrl.reconnect_count,

@@ -243,8 +243,8 @@ async def test_user_flow_rejects_invalid_port(hass: HomeAssistant, mock_probe) -
 async def test_user_flow_connection_failure(hass: HomeAssistant) -> None:
     """User flow re-renders the form with cannot_connect on a non-OSError failure.
 
-    Complements test_user_flow_cannot_connect, which covers the OSError branch;
-    this exercises the catch-all Exception branch in async_step_socketcand.
+    Complements test_user_flow_cannot_connect, which covers the OSError branch.
+    This exercises the catch-all Exception branch in async_step_socketcand.
     """
     with patch(
         "custom_components.dobiss_sx_evolution.config_flow._probe_bus_sync",

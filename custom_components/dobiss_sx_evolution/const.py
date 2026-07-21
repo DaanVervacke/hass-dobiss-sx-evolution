@@ -34,7 +34,7 @@ DEFAULT_BAUDRATE: Final = 115200
 
 # CAN frame identifiers (29-bit extended). Values match the DOBISS firmware
 # expectations one-to-one with the Gleam reference implementation.
-CAN_ID_TX_STATE: Final = 0x800102  # 8_388_866 - HA → DOBISS state write
+CAN_ID_TX_STATE: Final = 0x800102  # 8_388_866 - HA -> DOBISS state write
 CAN_ID_STATE_DUMP: Final = 0x800101  # 8_388_865 - request full state dump
 CAN_ID_RX_STATE: Final = 0x100FF00  # 16_842_496 - DOBISS -> HA state broadcast
 

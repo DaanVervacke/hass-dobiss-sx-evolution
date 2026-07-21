@@ -98,7 +98,7 @@ class DobissCoordinator(DataUpdateCoordinator[dict[OutputKey, int]]):
             config_entry=entry,
             name=DOMAIN,
             update_interval=None,
-            # Controller already drops unchanged frames; suppress no-op wakes.
+            # Controller already drops unchanged frames, suppress no-op wakes.
             always_update=False,
         )
 

@@ -31,17 +31,17 @@ from custom_components.dobiss_sx_evolution.protocol import (
 
 
 def test_parse_state_frame_valid_basic():
-    """Module 'A', zero-indexed output 0 → 1-indexed output 1."""
+    """Module 'A', zero-indexed output 0 -> 1-indexed output 1."""
     result = parse_state_frame(b"\x00A\x00\x01")
     assert result == StateUpdate(module="A", output=1, state=1)
 
 
 def test_parse_state_frame_valid_various():
-    """Zero-indexed output 5 → 1-indexed 6; full-brightness state 0xFF."""
+    """Zero-indexed output 5 -> 1-indexed 6, full-brightness state 0xFF."""
     result = parse_state_frame(b"\x00A\x05\xff")
     assert result is not None
     assert result.module == "A"
-    assert result.output == 6  # 0-indexed 5 → 1-indexed 6
+    assert result.output == 6  # 0-indexed 5 -> 1-indexed 6
     assert result.state == 0xFF
 
 
@@ -51,7 +51,7 @@ def test_parse_state_frame_various_modules():
         result = parse_state_frame(bytes([0x00, ord(letter), 0x02, 0x00]))
         assert result is not None
         assert result.module == letter
-        assert result.output == 3  # zero-indexed 2 → 1-indexed 3
+        assert result.output == 3  # zero-indexed 2 -> 1-indexed 3
         assert result.state == 0
 
 
@@ -132,11 +132,11 @@ def test_build_state_frame_bcd_output_encoding():
       output_byte = (zero // 10) * 16 + (zero % 10)
 
     Selected spot-checks:
-      output 1  → zero 0  → 0x00
-      output 9  → zero 8  → 0x08  (NOT 0x09)
-      output 10 → zero 9  → 0x09  (NOT 0x0A / NOT 0x10)
-      output 11 → zero 10 → 0x10  (BCD tens digit kicks in)
-      output 12 → zero 11 → 0x11
+      output 1  -> zero 0  -> 0x00
+      output 9  -> zero 8  -> 0x08  (NOT 0x09)
+      output 10 -> zero 9  -> 0x09  (NOT 0x0A / NOT 0x10)
+      output 11 -> zero 10 -> 0x10  (BCD tens digit kicks in)
+      output 12 -> zero 11 -> 0x11
     """
     cases = [
         (1, 0x00),
@@ -228,13 +228,13 @@ def test_can_to_ha_brightness_clamps_to_255():
 
 
 def test_ha_to_can_brightness_boundary_values():
-    """HA 0→0, HA 255→144 (max), step of 16 confirmed."""
+    """HA 0->0, HA 255->144 (max), step of 16 confirmed."""
     assert ha_to_can_brightness(0) == 0
     assert ha_to_can_brightness(255) == 144
 
 
 def test_ha_to_can_brightness_midpoint():
-    """HA 128 → round(128*9/255)=5 steps → 5*16=80."""
+    """HA 128 -> round(128*9/255)=5 steps -> 5*16=80."""
     assert ha_to_can_brightness(128) == 80
 
 

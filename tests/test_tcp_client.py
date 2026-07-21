@@ -153,3 +153,16 @@ async def test_download_output_name_unconfigured(mock_open) -> None:
     result = await client.download_output_name(0, 0)
 
     assert result is None
+
+
+@patch("custom_components.dobiss_sx_evolution.tcp_client.asyncio.open_connection")
+async def test_send_command_writes_empty_bytes(mock_open) -> None:
+    """send_command with output=b'' must still write the empty bytes."""
+    writer = _mock_writer()
+    mock_open.return_value = (_mock_reader(), writer)
+
+    client = Max200TcpClient("10.0.0.1", 1001)
+    await client.send_command(bytes(16), output=b"")
+
+    assert writer.write.call_count == 2
+    assert writer.write.call_args_list[1][0][0] == b""

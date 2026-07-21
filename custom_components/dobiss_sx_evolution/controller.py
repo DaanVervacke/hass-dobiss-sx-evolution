@@ -48,7 +48,7 @@ RECONNECT_BACKOFF_MAX_S = 60.0
 
 # After all configured modules are seen, keep draining frames until the bus
 # has been quiet for this many seconds.  DOBISS streams a tight burst after
-# DUMP_REQUEST; 150 ms of silence reliably means the burst is over.
+# DUMP_REQUEST. 150 ms of silence reliably means the burst is over.
 _DUMP_DRAIN_IDLE_S = 0.15
 
 # Fast TCP reachability check - python-can's socketcand client busy-loops for
@@ -242,7 +242,7 @@ class DobissController:
         The Notifier and AsyncBufferedReader are created here once (via
         _setup_notifier) and reused by both _collect_initial_state and
         _read_frames.  This eliminates the gap between discovery and the
-        running read loop — no frames are lost, and notifier.stop() (which
+        running read loop -- no frames are lost, and notifier.stop() (which
         blocks the event loop for up to one second while it joins the reader
         thread) is never called between the two phases.
         """
@@ -414,7 +414,7 @@ class DobissController:
                 # No response at all within the deadline.  Give up and
                 # let the read loop handle any late frames as usual.
                 _LOGGER.warning(
-                    "State refresh saw no response within %.1fs; "
+                    "State refresh saw no response within %.1fs, "
                     "state cache may be stale",
                     timeout,
                 )
@@ -454,7 +454,10 @@ class DobissController:
         """Update local cache and fan out to listeners (optimistic)."""
         self.states[key] = value
         for listener in list(self._listeners):
-            listener(key, value)
+            try:
+                listener(key, value)
+            except Exception:
+                _LOGGER.exception("Listener %s failed for %s=%s", listener, key, value)
 
     async def _collect_initial_state(self) -> None:
         """Send a dump request and drain all echoed frames from the bus.
@@ -495,8 +498,8 @@ class DobissController:
                     reader.get_message(), timeout=min(timeout, remaining)
                 )
             except TimeoutError:
-                # Idle timeout after all modules seen → burst is over.
-                # Hard deadline hit → warn below and hand off anyway.
+                # Idle timeout after all modules seen, burst is over.
+                # Hard deadline hit, warn below and hand off anyway.
                 break
             parsed = self._ingest_message(msg)
             if parsed is not None and parsed.module in configured_modules:
@@ -505,7 +508,7 @@ class DobissController:
         if seen_modules != configured_modules:
             missing = configured_modules - seen_modules
             _LOGGER.warning(
-                "Discovery saw %d/%d modules (%d total outputs in state cache); "
+                "Discovery saw %d/%d modules (%d total outputs in state cache), "
                 "missing modules: %s",
                 len(seen_modules),
                 len(configured_modules),
@@ -573,10 +576,10 @@ class DobissController:
             try:
                 await self._open_bus()
                 # _open_bus cleared self._reader/_notifier via _teardown_notifier.
-                # Re-create them now — before sending the dump — so that the
+                # Re-create them now, before sending the dump, so that the
                 # echoed dump frames are captured from the first byte.
                 await self._setup_notifier()
-                # Most recent state may have drifted while we were deaf;
+                # Most recent state may have drifted while we were deaf.
                 # the dump re-seeds the cache via the normal ingest path.
                 await self._send_frame(*DUMP_REQUEST_FRAME)
             except asyncio.CancelledError:
@@ -621,7 +624,7 @@ class DobissController:
         if self._reader is None or self._notifier is None:
             await self._setup_notifier()
         if self._reader is None:
-            raise RuntimeError("Could not create reader — bus unavailable")
+            raise RuntimeError("Could not create reader, bus unavailable")
         reader = self._reader
 
         try:

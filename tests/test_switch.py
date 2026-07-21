@@ -74,7 +74,7 @@ async def _setup(
     fake_ctrl.states = {output_key: state}
     fake_ctrl.reconnect_count = 0
     fake_ctrl.is_bus_connected = True
-    fake_ctrl._bus = object()  # truthy — avoids UpdateFailed
+    fake_ctrl._bus = object()  # truthy, avoids UpdateFailed
 
     fake_ctrl.async_setup = AsyncMock(return_value=None)
     fake_ctrl.async_shutdown = AsyncMock(return_value=None)

@@ -324,7 +324,7 @@ async def test_collect_initial_state_warns_on_missing_modules(
         call_count += 1
         if call_count == 1:
             return msg_a1
-        # Module "B" never responds; simulate idle-out.
+        # Module "B" never responds, simulate idle-out.
         await _real_sleep(_DUMP_DRAIN_IDLE_S + 0.05)
         raise TimeoutError
 
@@ -598,7 +598,7 @@ async def test_async_refresh_and_settle_serialises_concurrent_calls(
         await feeder
 
     assert send.await_count == 2, (
-        f"Both refresh calls must send a dump; got {send.await_count}"
+        f"Both refresh calls must send a dump, got {send.await_count}"
     )
 
 
@@ -659,7 +659,7 @@ async def test_open_bus_closes_orphaned_bus_when_cancelled_mid_connect(
 ) -> None:
     """If _open_bus's await of the executor job is cancelled after make_bus()
     already returned a bus handle (the CancelledError races the executor
-    result), that handle must be closed rather than leaked — it was never
+    result), that handle must be closed rather than leaked. It was never
     assigned to self._bus.
 
     This race is genuinely timing-dependent in production (a real
@@ -864,4 +864,24 @@ async def test_turn_on_fires_listener(hass: HomeAssistant) -> None:
     received = []
     ctrl.async_add_listener(lambda key, val: received.append((key, val)))
     await ctrl.async_turn_on(("A", 1))
+    assert received == [(("A", 1), 1)]
+
+
+async def test_apply_local_catches_listener_exception(hass: HomeAssistant) -> None:
+    """A throwing listener must not prevent other listeners or crash the loop."""
+    ctrl = _make_controller(hass)
+    ctrl.states[("A", 1)] = 0
+
+    received: list[tuple] = []
+
+    def bad_listener(key, val):
+        raise RuntimeError("boom")
+
+    ctrl.async_add_listener(bad_listener)
+    ctrl.async_add_listener(lambda key, val: received.append((key, val)))
+
+    msg = _make_fake_message(module="A", output=1, state=1)
+    ctrl._ingest_message(msg)
+
+    assert ctrl.states[("A", 1)] == 1
     assert received == [(("A", 1), 1)]

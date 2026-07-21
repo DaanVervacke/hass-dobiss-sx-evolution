@@ -180,7 +180,7 @@ def _make_reload_listener(
         )
 
         if coordinator is None or new_conn != prev_conn or new_modules != prev_modules:
-            # Connection or module topology changed — full reload required.
+            # Connection or module topology changed, full reload required.
             _LOGGER.debug(
                 "Subentry change requires full reload "
                 "(coordinator missing: %s, connection changed: %s, "
@@ -198,7 +198,7 @@ def _make_reload_listener(
         # existing modules).  Rebuild the controller's output lists and reload
         # platforms to re-create entities without touching the bus.
         _LOGGER.debug(
-            "Subentry change is output-only; reloading platforms without bus reconnect"
+            "Subentry change is output-only, reloading platforms without bus reconnect"
         )
         prev_modules = new_modules  # unchanged, but keep in sync
 
@@ -250,7 +250,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: DobissConfigEntry) -> b
     if unloaded:
         await entry.runtime_data.async_shutdown()
         remaining = hass.config_entries.async_entries(DOMAIN)
-        # The current entry is still in the list until unload completes; exclude it.
+        # The current entry is still in the list until unload completes, exclude it.
         if not any(e.entry_id != entry.entry_id for e in remaining):
             hass.services.async_remove(DOMAIN, _SERVICE_REFRESH)
     return unloaded

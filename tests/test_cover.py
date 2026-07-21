@@ -30,7 +30,7 @@ def _subentry_data() -> dict:
             "module": "A",
             "dimmable": False,
             "outputs": {
-                # Output 9 is the "up" relay; output 10 is "down".
+                # Output 9 is the "up" relay, output 10 is "down".
                 "9": {
                     "type": "shutter",
                     "name": "Living Room Blind",
@@ -64,7 +64,7 @@ async def _setup(hass: HomeAssistant) -> MockConfigEntry:
     fake_ctrl.shutters = [MagicMock(module="A", up_output=9, down_output=10)]
     fake_ctrl.states = {}
     fake_ctrl.reconnect_count = 0
-    fake_ctrl._bus = object()  # truthy — avoids UpdateFailed
+    fake_ctrl._bus = object()  # truthy, avoids UpdateFailed
     fake_ctrl.is_bus_connected = True
 
     fake_ctrl.async_setup = AsyncMock(return_value=None)

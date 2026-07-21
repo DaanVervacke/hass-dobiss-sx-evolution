@@ -285,7 +285,7 @@ async def test_reload_listener_new_module_triggers_full_reload(
 
     reload_calls: list[str] = []
 
-    # Simulate adding module B (new module letter → full reload required).
+    # Simulate adding module B (new module letter, full reload required).
     updated_entry = MockConfigEntry(
         domain=DOMAIN,
         data=_make_entry_data(),
@@ -326,7 +326,7 @@ async def test_reload_listener_connection_change_triggers_full_reload(
 
     reload_calls: list[str] = []
 
-    # Simulate changing the host (connection param change → full reload).
+    # Simulate changing the host (connection param change, full reload).
     updated_entry = MockConfigEntry(
         domain=DOMAIN,
         data=_make_entry_data(host="192.168.1.99"),

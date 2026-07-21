@@ -210,7 +210,7 @@ async def test_reauth_started_when_backoff_saturates(hass: HomeAssistant) -> Non
 
     entry.async_start_reauth = _track_reauth  # type: ignore[method-assign]
 
-    fail_count = 7  # 6 needed to saturate; 7 for margin
+    fail_count = 7  # 6 needed to saturate, 7 for margin
     open_calls = 0
 
     async def fake_read_frames() -> None:

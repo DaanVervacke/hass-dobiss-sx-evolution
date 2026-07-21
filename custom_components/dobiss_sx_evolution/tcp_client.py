@@ -60,7 +60,7 @@ class Max200TcpClient:
 
         try:
             writer.write(intro)
-            if output:
+            if output is not None:
                 writer.write(output)
             await writer.drain()
         except OSError as err:
@@ -83,7 +83,7 @@ class Max200TcpClient:
 
         try:
             writer.write(intro)
-            if output:
+            if output is not None:
                 writer.write(output)
             await writer.drain()
 
