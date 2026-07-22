@@ -615,12 +615,12 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
         """Return subentry types supported by this integration."""
         types: dict[str, type[ConfigSubentryFlow]] = {
             SUBENTRY_TYPE_MODULE: ModuleSubentryFlowHandler,
-            SUBENTRY_TYPE_MOOD: MoodSubentryFlowHandler,
         }
         if config_entry.data.get(CONF_MASTER_DEVICE) or config_entry.data.get(
             CONF_MAX200_HOST
         ):
             types[SUBENTRY_TYPE_MODULE_IMPORT] = ModuleImportSubentryFlowHandler
+        types[SUBENTRY_TYPE_MOOD] = MoodSubentryFlowHandler
         return types
 
 

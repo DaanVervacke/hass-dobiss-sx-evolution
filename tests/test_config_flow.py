@@ -2403,15 +2403,21 @@ async def test_import_subentry_type_hidden_without_master(
     types = DobissConfigFlow.async_get_supported_subentry_types(entry)
     assert SUBENTRY_TYPE_MODULE_IMPORT not in types
     assert SUBENTRY_TYPE_MODULE in types
+    assert list(types.keys()) == [SUBENTRY_TYPE_MODULE, SUBENTRY_TYPE_MOOD]
 
 
 async def test_import_subentry_type_shown_with_master(
     hass: HomeAssistant, mock_controller, mock_coordinator_serial
 ) -> None:
-    """module_import is offered when master_device is configured."""
+    """module_import is offered when master_device is configured, next to module."""
     entry = await _setup_entry_with_master(hass, mock_controller)
     types = DobissConfigFlow.async_get_supported_subentry_types(entry)
     assert SUBENTRY_TYPE_MODULE_IMPORT in types
+    assert list(types.keys()) == [
+        SUBENTRY_TYPE_MODULE,
+        SUBENTRY_TYPE_MODULE_IMPORT,
+        SUBENTRY_TYPE_MOOD,
+    ]
 
 
 async def test_import_subentry_type_shown_with_max200_host(
