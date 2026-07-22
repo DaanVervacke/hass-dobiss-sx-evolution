@@ -350,11 +350,21 @@
     "refresh": {
       "name": "Refresh state",
       "description": "Asks DOBISS to broadcast the current state of every output. Useful when Home Assistant's cached state is out of sync."
+    },
+    "sync_clock": {
+      "name": "Sync clock",
+      "description": "Sends the current Home Assistant time to the Max200 controller now, instead of waiting for the periodic sync. Requires a Max200 serial port or TCP host to be configured on the integration. Over TCP the command is sent without confirmation, over serial a failure is reported."
     }
   },
   "exceptions": {
     "cannot_send": {
       "message": "Couldn't send the command to DOBISS. Check that socketcand and the CAN interface are still up."
+    },
+    "no_clock_link": {
+      "message": "No Max200 serial port or TCP host is configured on any DOBISS entry, there is nothing to sync the clock to."
+    },
+    "clock_sync_failed": {
+      "message": "Could not deliver the clock command to the Max200 over serial. Check the cable and the configured serial port."
     }
   },
   "issues": {

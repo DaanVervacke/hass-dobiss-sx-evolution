@@ -541,3 +541,61 @@ async def test_coordinator_clock_sync_via_tcp_failure_logged(
         await hass.async_block_till_done()
 
         assert entry.state is ConfigEntryState.LOADED
+
+
+async def test_async_sync_clock_background_call_swallows_serial_failure(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """Invoked as the interval callback (`_now` set), a serial failure is swallowed."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=_make_entry_data(master_device="/dev/ttyUSB1"),
+        title="DOBISS",
+        version=1,
+    )
+    entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.dobiss_sx_evolution.coordinator.Max200SerialClient"
+    ) as mock_serial_cls:
+        mock_serial = mock_serial_cls.return_value
+        mock_serial.device = "/dev/ttyUSB1"
+        mock_serial.sync_clock = MagicMock()
+
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+        coordinator: DobissCoordinator = entry.runtime_data
+        mock_serial.sync_clock.side_effect = ConnectionError("device gone")
+
+        # async_track_time_interval always passes a timestamp, simulate that here.
+        await coordinator.async_sync_clock(utcnow())
+
+
+async def test_async_sync_clock_direct_call_raises_on_serial_failure(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """Invoked directly (no `_now`, like the service), a serial failure propagates."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=_make_entry_data(master_device="/dev/ttyUSB1"),
+        title="DOBISS",
+        version=1,
+    )
+    entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.dobiss_sx_evolution.coordinator.Max200SerialClient"
+    ) as mock_serial_cls:
+        mock_serial = mock_serial_cls.return_value
+        mock_serial.device = "/dev/ttyUSB1"
+        mock_serial.sync_clock = MagicMock()
+
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+        coordinator: DobissCoordinator = entry.runtime_data
+        mock_serial.sync_clock.side_effect = ConnectionError("device gone")
+
+        with pytest.raises(ConnectionError):
+            await coordinator.async_sync_clock()

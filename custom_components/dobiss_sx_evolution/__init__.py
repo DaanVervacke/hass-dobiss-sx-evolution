@@ -10,6 +10,7 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigEntryState, ConfigSubentry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
@@ -39,6 +40,7 @@ PLATFORMS: list[Platform] = [
 ]
 
 _SERVICE_REFRESH = "refresh"
+_SERVICE_SYNC_CLOCK = "sync_clock"
 
 
 async def _async_handle_refresh(call: ServiceCall) -> None:
@@ -56,6 +58,31 @@ async def _async_handle_refresh(call: ServiceCall) -> None:
                 entry.entry_id,
                 exc_info=True,
             )
+
+
+async def _async_handle_sync_clock(call: ServiceCall) -> None:
+    """Handle the dobiss_sx_evolution.sync_clock service call."""
+    hass = call.hass
+    coordinators: list[DobissCoordinator] = []
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        if entry.state is not ConfigEntryState.LOADED:
+            continue
+        coordinator: DobissCoordinator = entry.runtime_data
+        if coordinator.tcp_client is not None or coordinator.serial_client is not None:
+            coordinators.append(coordinator)
+
+    if not coordinators:
+        raise ServiceValidationError(
+            translation_domain=DOMAIN, translation_key="no_clock_link"
+        )
+
+    for coordinator in coordinators:
+        try:
+            await coordinator.async_sync_clock()
+        except ConnectionError as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN, translation_key="clock_sync_failed"
+            ) from err
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: DobissConfigEntry) -> bool:
@@ -104,6 +131,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: DobissConfigEntry) -> bo
     if not hass.services.has_service(DOMAIN, _SERVICE_REFRESH):
         hass.services.async_register(
             DOMAIN, _SERVICE_REFRESH, _async_handle_refresh, schema=vol.Schema({})
+        )
+
+    if not hass.services.has_service(DOMAIN, _SERVICE_SYNC_CLOCK):
+        hass.services.async_register(
+            DOMAIN,
+            _SERVICE_SYNC_CLOCK,
+            _async_handle_sync_clock,
+            schema=vol.Schema({}),
         )
 
     return True
@@ -314,6 +349,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: DobissConfigEntry) -> b
         # The current entry is still in the list until unload completes, exclude it.
         if not any(e.entry_id != entry.entry_id for e in remaining):
             hass.services.async_remove(DOMAIN, _SERVICE_REFRESH)
+            hass.services.async_remove(DOMAIN, _SERVICE_SYNC_CLOCK)
     return unloaded
 
 

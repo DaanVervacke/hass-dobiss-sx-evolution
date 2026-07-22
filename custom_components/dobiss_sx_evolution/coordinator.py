@@ -151,11 +151,16 @@ class DobissCoordinator(DataUpdateCoordinator[dict[OutputKey, int]]):
         )
 
         if self.tcp_client is not None or self.serial_client is not None:
-            await self._sync_clock()
+            try:
+                await self.async_sync_clock()
+            except Exception:  # noqa: BLE001
+                # Initial sync is a background call, a transient serial
+                # failure here must not fail config entry setup.
+                _LOGGER.warning("Clock sync to Max200 failed", exc_info=True)
             self.config_entry.async_on_unload(
                 async_track_time_interval(
                     self.hass,
-                    self._sync_clock,
+                    self.async_sync_clock,
                     timedelta(hours=CLOCK_SYNC_INTERVAL_HOURS),
                 )
             )
@@ -184,8 +189,20 @@ class DobissCoordinator(DataUpdateCoordinator[dict[OutputKey, int]]):
         self._debounce_unsub = None
         self.async_set_updated_data(dict(self.controller.states))
 
-    async def _sync_clock(self, _now: Any = None) -> None:
-        """Send current time to the Max200."""
+    async def async_sync_clock(self, _now: Any = None) -> None:
+        """Send current time to the Max200.
+
+        `_now` distinguishes how this was invoked: `async_track_time_interval`
+        always passes the callback timestamp, so `_now is not None` there
+        means "background call", and a serial failure is swallowed (logged)
+        instead of raised, so a transient link hiccup never surfaces as an
+        unhandled task error. The `sync_clock` service calls this directly
+        with no argument (`_now is None`), and a serial failure is left to
+        propagate so the service call fails visibly. The initial sync at
+        setup also calls this with no argument, but that call site wraps its
+        own try/except (see `_async_setup`) since it must never fail entry
+        setup either.
+        """
         now = dt_util.now()
         if self.tcp_client is not None:
             try:
@@ -194,12 +211,15 @@ class DobissCoordinator(DataUpdateCoordinator[dict[OutputKey, int]]):
                 _LOGGER.warning("Clock sync to Max200 failed", exc_info=True)
             return
         if self.serial_client is not None:
-            try:
-                await self.hass.async_add_executor_job(
-                    self.serial_client.sync_clock, now
-                )
-            except Exception:  # noqa: BLE001
-                _LOGGER.warning("Clock sync to Max200 failed", exc_info=True)
+            if _now is not None:
+                try:
+                    await self.hass.async_add_executor_job(
+                        self.serial_client.sync_clock, now
+                    )
+                except Exception:  # noqa: BLE001
+                    _LOGGER.warning("Clock sync to Max200 failed", exc_info=True)
+                return
+            await self.hass.async_add_executor_job(self.serial_client.sync_clock, now)
 
     async def async_shutdown(self) -> None:
         """Tear down the controller, then the coordinator."""

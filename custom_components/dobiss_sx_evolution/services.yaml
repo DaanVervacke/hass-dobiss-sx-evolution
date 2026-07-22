@@ -4,3 +4,10 @@ refresh:
     Sends a state-dump request to every configured DOBISS CAN bus, forcing the
     controller to re-broadcast the current output states. Use this when
     Home Assistant's cached state appears to have drifted from reality.
+sync_clock:
+  name: Sync clock
+  description: >-
+    Sends the current Home Assistant time to the Max200 controller now,
+    instead of waiting for the periodic sync. Requires a Max200 serial port
+    or TCP host to be configured on the integration. Over TCP the command is
+    sent without confirmation, over serial a failure is reported.

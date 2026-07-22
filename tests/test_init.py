@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.dobiss_sx_evolution.__init__ import (
@@ -871,3 +873,103 @@ async def test_refresh_service_removed_on_last_unload(
     await hass.async_block_till_done()
 
     assert not hass.services.has_service(DOMAIN, "refresh")
+
+
+async def test_sync_clock_service_registered_and_removed_on_last_unload(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """The sync_clock service must be registered on setup and removed on last unload."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=_make_entry_data(max200_host="10.0.0.2"),
+        title="DOBISS",
+        version=1,
+    )
+    entry.add_to_hass(hass)
+
+    with patch("custom_components.dobiss_sx_evolution.coordinator.Max200TcpClient"):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+        assert hass.services.has_service(DOMAIN, "sync_clock")
+
+        assert await hass.config_entries.async_unload(entry.entry_id)
+        await hass.async_block_till_done()
+
+        assert not hass.services.has_service(DOMAIN, "sync_clock")
+
+
+async def test_sync_clock_service_calls_tcp_client(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """Calling sync_clock invokes the coordinator's TCP client with a tz-aware time."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=_make_entry_data(max200_host="10.0.0.2"),
+        title="DOBISS",
+        version=1,
+    )
+    entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.dobiss_sx_evolution.coordinator.Max200TcpClient"
+    ) as mock_tcp_cls:
+        mock_tcp = mock_tcp_cls.return_value
+        mock_tcp.host = "10.0.0.2"
+        mock_tcp.sync_clock = AsyncMock()
+
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+        # The initial setup sync already fired once, reset to isolate the
+        # service-triggered call.
+        mock_tcp.sync_clock.reset_mock()
+
+        await hass.services.async_call(DOMAIN, "sync_clock", blocking=True)
+
+        mock_tcp.sync_clock.assert_awaited_once()
+        call_dt = mock_tcp.sync_clock.call_args[0][0]
+        assert call_dt.tzinfo is not None
+
+
+async def test_sync_clock_service_no_clock_link_raises(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """The service raises ServiceValidationError when no entry has a Max200 link."""
+    entry = MockConfigEntry(
+        domain=DOMAIN, data=_make_entry_data(), title="DOBISS", version=1
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(DOMAIN, "sync_clock", blocking=True)
+
+
+async def test_sync_clock_service_serial_failure_raises_homeassistant_error(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """A serial sync failure surfaces as HomeAssistantError on the service call."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=_make_entry_data(master_device="/dev/ttyUSB1"),
+        title="DOBISS",
+        version=1,
+    )
+    entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.dobiss_sx_evolution.coordinator.Max200SerialClient"
+    ) as mock_serial_cls:
+        mock_serial = mock_serial_cls.return_value
+        mock_serial.device = "/dev/ttyUSB1"
+        mock_serial.sync_clock = MagicMock()
+
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+        mock_serial.sync_clock.side_effect = ConnectionError("device gone")
+
+        with pytest.raises(HomeAssistantError):
+            await hass.services.async_call(DOMAIN, "sync_clock", blocking=True)
