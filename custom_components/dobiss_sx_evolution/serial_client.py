@@ -27,8 +27,10 @@ from .protocol import (
     EEPROM_BASE_BYTE,
     EEPROM_READ_DIRECTION,
     EEPROM_READ_RECORD_SIZE,
+    MOOD_NAME_RESPONSE_SIZE,
     OUTPUT_NAME_RESPONSE_SIZE,
     build_clock_set_packets,
+    mood_name_eeprom_addr,
     output_name_eeprom_addr,
     parse_config_response,
     parse_output_name,
@@ -162,6 +164,34 @@ class Max200SerialClient:
                 name = parse_output_name(data)
                 if name is not None:
                     names[output_index] = name
+            return names
+        finally:
+            port.close()
+
+    def download_mood_names(self, count: int) -> dict[int, str]:
+        """n0 batch mood name download. Single connection for all moods.
+
+        Returns {mood_number: name} for moods that have a non-empty name.
+        """
+        time.sleep(SERIAL_SETTLE_BEFORE_OPEN_S)
+        port = self._open()
+        try:
+            self._handshake(port, "n0")
+            names: dict[int, str] = {}
+            for mood_number in range(count):
+                addr = mood_name_eeprom_addr(mood_number)
+                self._write_control_byte(
+                    port,
+                    EEPROM_BASE_BYTE,
+                    addr >> 8,
+                    addr & 0xFF,
+                    EEPROM_READ_RECORD_SIZE,
+                    EEPROM_READ_DIRECTION,
+                )
+                data = port.read(MOOD_NAME_RESPONSE_SIZE)
+                name = parse_output_name(data)
+                if name is not None:
+                    names[mood_number] = name
             return names
         finally:
             port.close()

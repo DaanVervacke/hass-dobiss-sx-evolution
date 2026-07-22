@@ -14,6 +14,7 @@ from custom_components.dobiss_sx_evolution.config_flow import (
     DobissConfigFlow,
     ModuleImportSubentryFlowHandler,
     ModuleSubentryFlowHandler,
+    MoodImportSubentryFlowHandler,
     _occupied_outputs_in_module,
     _validate_module,
 )
@@ -28,6 +29,7 @@ from custom_components.dobiss_sx_evolution.const import (
     SUBENTRY_TYPE_MODULE,
     SUBENTRY_TYPE_MODULE_IMPORT,
     SUBENTRY_TYPE_MOOD,
+    SUBENTRY_TYPE_MOOD_IMPORT,
 )
 
 from .conftest import MOCK_CONFIG
@@ -2398,10 +2400,11 @@ async def _setup_entry_with_max200_host(
 async def test_import_subentry_type_hidden_without_master(
     hass: HomeAssistant, mock_controller
 ) -> None:
-    """module_import is not offered when master_device is not configured."""
+    """module_import and mood_import are not offered without a Max200 link."""
     entry = await _setup_loaded_entry(hass, mock_controller)
     types = DobissConfigFlow.async_get_supported_subentry_types(entry)
     assert SUBENTRY_TYPE_MODULE_IMPORT not in types
+    assert SUBENTRY_TYPE_MOOD_IMPORT not in types
     assert SUBENTRY_TYPE_MODULE in types
     assert list(types.keys()) == [SUBENTRY_TYPE_MODULE, SUBENTRY_TYPE_MOOD]
 
@@ -2409,28 +2412,32 @@ async def test_import_subentry_type_hidden_without_master(
 async def test_import_subentry_type_shown_with_master(
     hass: HomeAssistant, mock_controller, mock_coordinator_serial
 ) -> None:
-    """module_import is offered when master_device is configured, next to module."""
+    """module_import/mood_import are offered when master_device is configured."""
     entry = await _setup_entry_with_master(hass, mock_controller)
     types = DobissConfigFlow.async_get_supported_subentry_types(entry)
     assert SUBENTRY_TYPE_MODULE_IMPORT in types
+    assert SUBENTRY_TYPE_MOOD_IMPORT in types
     assert list(types.keys()) == [
         SUBENTRY_TYPE_MODULE,
         SUBENTRY_TYPE_MODULE_IMPORT,
         SUBENTRY_TYPE_MOOD,
+        SUBENTRY_TYPE_MOOD_IMPORT,
     ]
 
 
 async def test_import_subentry_type_shown_with_max200_host(
     hass: HomeAssistant, mock_controller, mock_coordinator_tcp
 ) -> None:
-    """module_import is offered when max200_host is configured, next to module."""
+    """module_import/mood_import are offered when max200_host is configured."""
     entry = await _setup_entry_with_max200_host(hass, mock_controller)
     types = DobissConfigFlow.async_get_supported_subentry_types(entry)
     assert SUBENTRY_TYPE_MODULE_IMPORT in types
+    assert SUBENTRY_TYPE_MOOD_IMPORT in types
     assert list(types.keys()) == [
         SUBENTRY_TYPE_MODULE,
         SUBENTRY_TYPE_MODULE_IMPORT,
         SUBENTRY_TYPE_MOOD,
+        SUBENTRY_TYPE_MOOD_IMPORT,
     ]
 
 
@@ -2889,3 +2896,257 @@ async def test_mood_reconfigure_rename(hass: HomeAssistant, mock_controller) -> 
     assert result2["type"] == FlowResultType.ABORT
     assert result2["reason"] == "reconfigure_successful"
     assert entry.subentries[sub_id].title == "Evening Ambiance"
+
+
+# ---------------------------------------------------------------------------
+# MoodImportSubentryFlowHandler
+# ---------------------------------------------------------------------------
+
+
+async def test_mood_import_creates_subentries(
+    hass: HomeAssistant, mock_controller, mock_coordinator_serial
+) -> None:
+    """Import downloads mood names and creates mood subentries."""
+    entry = await _setup_entry_with_master(hass, mock_controller)
+
+    mood_names = {5: "Gaan slapen", 12: "Alles uit"}
+
+    with patch(
+        "custom_components.dobiss_sx_evolution.config_flow.Max200SerialClient"
+    ) as mock_client_cls:
+        mock_client = mock_client_cls.return_value
+        mock_client.download_mood_names = MagicMock(return_value=mood_names)
+
+        result = await hass.config_entries.subentries.async_init(
+            (entry.entry_id, SUBENTRY_TYPE_MOOD_IMPORT),
+            context={"source": "user"},
+        )
+
+    assert result["type"] == FlowResultType.ABORT
+    assert result["reason"] == "import_successful"
+    assert result["description_placeholders"]["count"] == "2"
+
+    mood_subentries = {
+        sub.data["mood_number"]: sub
+        for sub in entry.subentries.values()
+        if sub.subentry_type == SUBENTRY_TYPE_MOOD
+    }
+    assert mood_subentries[5].title == "Gaan slapen"
+    assert mood_subentries[12].title == "Alles uit"
+
+
+async def test_mood_import_via_tcp_creates_subentries(
+    hass: HomeAssistant, mock_controller, mock_coordinator_tcp
+) -> None:
+    """Import downloads mood names over TCP and creates mood subentries."""
+    entry = await _setup_entry_with_max200_host(hass, mock_controller)
+
+    with patch(
+        "custom_components.dobiss_sx_evolution.config_flow.Max200TcpClient"
+    ) as mock_client_cls:
+        mock_client = mock_client_cls.return_value
+        mock_client.download_mood_names = AsyncMock(return_value={3: "Thuiskomen"})
+
+        result = await hass.config_entries.subentries.async_init(
+            (entry.entry_id, SUBENTRY_TYPE_MOOD_IMPORT),
+            context={"source": "user"},
+        )
+
+    assert result["type"] == FlowResultType.ABORT
+    assert result["reason"] == "import_successful"
+    assert result["description_placeholders"]["count"] == "1"
+
+    mood_subentries = {
+        sub.data["mood_number"]: sub
+        for sub in entry.subentries.values()
+        if sub.subentry_type == SUBENTRY_TYPE_MOOD
+    }
+    assert mood_subentries[3].title == "Thuiskomen"
+
+
+async def test_mood_import_prefers_tcp_over_serial(
+    hass: HomeAssistant, mock_controller, mock_coordinator_tcp
+) -> None:
+    """When both max200_host and master_device are set, TCP is used for import."""
+    entry_data = {
+        "connection_type": CONNECTION_TYPE_SOCKETCAND,
+        **MOCK_CONFIG,
+        CONF_MAX200_HOST: MOCK_MAX200_HOST,
+        CONF_MASTER_DEVICE: MOCK_MASTER_DEVICE,
+    }
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=entry_data,
+        unique_id=f"{CONNECTION_TYPE_SOCKETCAND}:{MOCK_CONFIG['host']}:{MOCK_CONFIG['port']}/{MOCK_CONFIG['interface']}",
+        version=1,
+        subentries_data=[],
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    with (
+        patch(
+            "custom_components.dobiss_sx_evolution.config_flow.Max200TcpClient"
+        ) as mock_tcp_cls,
+        patch(
+            "custom_components.dobiss_sx_evolution.config_flow.Max200SerialClient"
+        ) as mock_serial_cls,
+    ):
+        mock_tcp = mock_tcp_cls.return_value
+        mock_tcp.download_mood_names = AsyncMock(return_value={0: "Alles uit"})
+
+        result = await hass.config_entries.subentries.async_init(
+            (entry.entry_id, SUBENTRY_TYPE_MOOD_IMPORT),
+            context={"source": "user"},
+        )
+
+    assert result["type"] == FlowResultType.ABORT
+    assert result["reason"] == "import_successful"
+    mock_tcp.download_mood_names.assert_awaited_once()
+    mock_serial_cls.assert_not_called()
+
+
+async def test_mood_import_skips_existing_moods(
+    hass: HomeAssistant, mock_controller, mock_coordinator_serial
+) -> None:
+    """Moods that already have a subentry are skipped."""
+    entry = await _setup_entry_with_master(
+        hass,
+        mock_controller,
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_MOOD,
+                "title": "Existing",
+                "unique_id": "mood:3",
+                "data": {"mood_number": 3},
+            }
+        ],
+    )
+
+    with patch(
+        "custom_components.dobiss_sx_evolution.config_flow.Max200SerialClient"
+    ) as mock_client_cls:
+        mock_client = mock_client_cls.return_value
+        mock_client.download_mood_names = MagicMock(
+            return_value={3: "Duplicate", 4: "New Mood"}
+        )
+
+        result = await hass.config_entries.subentries.async_init(
+            (entry.entry_id, SUBENTRY_TYPE_MOOD_IMPORT),
+            context={"source": "user"},
+        )
+
+    assert result["type"] == FlowResultType.ABORT
+    assert result["reason"] == "import_successful"
+    assert result["description_placeholders"]["count"] == "1"
+
+    mood_numbers = {
+        sub.data["mood_number"]
+        for sub in entry.subentries.values()
+        if sub.subentry_type == SUBENTRY_TYPE_MOOD
+    }
+    assert mood_numbers == {3, 4}
+
+
+async def test_mood_import_no_new_moods(
+    hass: HomeAssistant, mock_controller, mock_coordinator_serial
+) -> None:
+    """When all named moods already exist, abort with no_new_moods."""
+    entry = await _setup_entry_with_master(
+        hass,
+        mock_controller,
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_MOOD,
+                "title": "Existing",
+                "unique_id": "mood:3",
+                "data": {"mood_number": 3},
+            }
+        ],
+    )
+
+    with patch(
+        "custom_components.dobiss_sx_evolution.config_flow.Max200SerialClient"
+    ) as mock_client_cls:
+        mock_client = mock_client_cls.return_value
+        mock_client.download_mood_names = MagicMock(return_value={3: "Duplicate"})
+
+        result = await hass.config_entries.subentries.async_init(
+            (entry.entry_id, SUBENTRY_TYPE_MOOD_IMPORT),
+            context={"source": "user"},
+        )
+
+    assert result["type"] == FlowResultType.ABORT
+    assert result["reason"] == "no_new_moods"
+
+
+async def test_mood_import_serial_failure(
+    hass: HomeAssistant, mock_controller, mock_coordinator_serial
+) -> None:
+    """Serial connection failure aborts with import_failed."""
+    entry = await _setup_entry_with_master(hass, mock_controller)
+
+    with patch(
+        "custom_components.dobiss_sx_evolution.config_flow.Max200SerialClient"
+    ) as mock_client_cls:
+        mock_client = mock_client_cls.return_value
+        mock_client.download_mood_names = MagicMock(
+            side_effect=ConnectionError("device gone")
+        )
+
+        result = await hass.config_entries.subentries.async_init(
+            (entry.entry_id, SUBENTRY_TYPE_MOOD_IMPORT),
+            context={"source": "user"},
+        )
+
+    assert result["type"] == FlowResultType.ABORT
+    assert result["reason"] == "import_failed"
+
+
+async def test_mood_import_tcp_failure(
+    hass: HomeAssistant, mock_controller, mock_coordinator_tcp
+) -> None:
+    """TCP connection failure during import aborts with import_failed."""
+    entry = await _setup_entry_with_max200_host(hass, mock_controller)
+
+    with patch(
+        "custom_components.dobiss_sx_evolution.config_flow.Max200TcpClient"
+    ) as mock_client_cls:
+        mock_client = mock_client_cls.return_value
+        mock_client.download_mood_names = AsyncMock(
+            side_effect=OSError("connection refused")
+        )
+
+        result = await hass.config_entries.subentries.async_init(
+            (entry.entry_id, SUBENTRY_TYPE_MOOD_IMPORT),
+            context={"source": "user"},
+        )
+
+    assert result["type"] == FlowResultType.ABORT
+    assert result["reason"] == "import_failed"
+
+
+async def test_mood_import_aborts_without_max200_connection(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """Import flow aborts when neither master_device nor max200_host is configured.
+
+    mood_import is hidden from async_get_supported_subentry_types when
+    neither is configured, so it cannot be reached through the normal
+    subentries.async_init flow manager (that raises UnknownHandler). The
+    no_max200_connection guard is a defensive check inside the handler
+    itself, so it is exercised by invoking the handler's step method
+    directly, mirroring the module_import equivalent.
+    """
+    entry = await _setup_loaded_entry(hass, mock_controller)
+    assert CONF_MASTER_DEVICE not in entry.data
+    assert CONF_MAX200_HOST not in entry.data
+
+    flow = MoodImportSubentryFlowHandler()
+    flow.hass = hass
+    flow.handler = (entry.entry_id, SUBENTRY_TYPE_MOOD_IMPORT)
+
+    result = await flow.async_step_user(None)
+    assert result["type"] == FlowResultType.ABORT
+    assert result["reason"] == "no_max200_connection"

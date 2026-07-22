@@ -27,6 +27,7 @@ CONF_NAME: Final = "name"
 SUBENTRY_TYPE_MODULE: Final = "module"
 SUBENTRY_TYPE_MODULE_IMPORT: Final = "module_import"
 SUBENTRY_TYPE_MOOD: Final = "mood"
+SUBENTRY_TYPE_MOOD_IMPORT: Final = "mood_import"
 
 DEFAULT_INTERFACE: Final = "can0"
 DEFAULT_PORT: Final = 29536

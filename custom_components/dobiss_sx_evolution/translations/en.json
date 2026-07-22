@@ -146,6 +146,24 @@
         "no_max200_connection": "No Max200 connection configured. Set a TCP host or serial port in the connection settings."
       }
     },
+    "mood_import": {
+      "entry_type": "Mood import",
+      "initiate_flow": {
+        "user": "Import moods from Max200"
+      },
+      "step": {
+        "user": {
+          "title": "Import moods from Max200",
+          "description": "Download mood names from the Max200 controller. Moods that already exist will be skipped. Manual \"Add mood\" is still available for moods without a stored name."
+        }
+      },
+      "abort": {
+        "import_successful": "Imported {count} mood(s).",
+        "import_failed": "Could not connect to the Max200. Check the serial port or TCP host and that the controller is powered on.",
+        "no_new_moods": "All named moods from the Max200 are already configured.",
+        "no_max200_connection": "No Max200 connection configured. Set a TCP host or serial port in the connection settings."
+      }
+    },
     "mood": {
       "entry_type": "Mood",
       "initiate_flow": {

@@ -45,6 +45,7 @@ from .const import (
     SUBENTRY_TYPE_MODULE,
     SUBENTRY_TYPE_MODULE_IMPORT,
     SUBENTRY_TYPE_MOOD,
+    SUBENTRY_TYPE_MOOD_IMPORT,
 )
 from .controller import ConnectionConfig, SocketcandConnection, UsbConnection
 from .protocol import OUTPUTS_PER_MODULE
@@ -616,11 +617,15 @@ class DobissConfigFlow(ConfigFlow, domain=DOMAIN):
         types: dict[str, type[ConfigSubentryFlow]] = {
             SUBENTRY_TYPE_MODULE: ModuleSubentryFlowHandler,
         }
-        if config_entry.data.get(CONF_MASTER_DEVICE) or config_entry.data.get(
-            CONF_MAX200_HOST
-        ):
+        has_max200_link = bool(
+            config_entry.data.get(CONF_MASTER_DEVICE)
+            or config_entry.data.get(CONF_MAX200_HOST)
+        )
+        if has_max200_link:
             types[SUBENTRY_TYPE_MODULE_IMPORT] = ModuleImportSubentryFlowHandler
         types[SUBENTRY_TYPE_MOOD] = MoodSubentryFlowHandler
+        if has_max200_link:
+            types[SUBENTRY_TYPE_MOOD_IMPORT] = MoodImportSubentryFlowHandler
         return types
 
 
@@ -1269,4 +1274,77 @@ class MoodSubentryFlowHandler(ConfigSubentryFlow):
         )
         return self.async_show_form(
             step_id="reconfigure", data_schema=schema, errors=errors
+        )
+
+
+MOODS_PER_CONTROLLER = 100
+
+
+class MoodImportSubentryFlowHandler(ConfigSubentryFlow):
+    """Handle the "Import moods from Max200" subentry flow."""
+
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Download mood names from Max200 and create mood subentries."""
+        entry = self._get_entry()
+        max200_host = entry.data.get(CONF_MAX200_HOST)
+        master_device = entry.data.get(CONF_MASTER_DEVICE)
+
+        if not max200_host and not master_device:
+            return self.async_abort(reason="no_max200_connection")
+
+        existing_moods = {
+            sub.data[CONF_MOOD_NUMBER]
+            for sub in entry.subentries.values()
+            if sub.subentry_type == SUBENTRY_TYPE_MOOD
+        }
+
+        dl_mood_names: Callable[[], Awaitable[dict[int, str]]]
+
+        if max200_host:
+            tcp_client = Max200TcpClient(max200_host)
+
+            async def dl_mood_names() -> dict[int, str]:
+                return await tcp_client.download_mood_names(MOODS_PER_CONTROLLER)
+        else:
+            assert master_device
+            serial_client = Max200SerialClient(master_device)
+            hass = self.hass
+
+            async def dl_mood_names() -> dict[int, str]:
+                return await hass.async_add_executor_job(
+                    serial_client.download_mood_names,
+                    MOODS_PER_CONTROLLER,
+                )
+
+        try:
+            names = await dl_mood_names()
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("Failed to download mood names from Max200: %s", err)
+            return self.async_abort(reason="import_failed")
+
+        new_moods = {
+            number: name
+            for number, name in names.items()
+            if number not in existing_moods
+        }
+
+        if not new_moods:
+            return self.async_abort(reason="no_new_moods")
+
+        imported = 0
+        for mood_number, name in new_moods.items():
+            subentry = ConfigSubentry(
+                data=MappingProxyType({CONF_MOOD_NUMBER: mood_number}),
+                subentry_type=SUBENTRY_TYPE_MOOD,
+                title=name,
+                unique_id=f"mood:{mood_number}",
+            )
+            if self.hass.config_entries.async_add_subentry(entry, subentry):
+                imported += 1
+
+        return self.async_abort(
+            reason="import_successful",
+            description_placeholders={"count": str(imported)},
         )

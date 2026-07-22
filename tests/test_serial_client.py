@@ -289,3 +289,70 @@ def test_port_closed_on_exception(mock_serial_cls, _mock_sleep):
         client.download_config()
 
     port.close.assert_called_once()
+
+
+@patch("custom_components.dobiss_sx_evolution.serial_client.time.sleep")
+@patch("custom_components.dobiss_sx_evolution.serial_client.serial.Serial")
+def test_download_mood_names(mock_serial_cls, _mock_sleep):
+    """Batch mood name download reads all moods in one connection."""
+    name0 = bytearray(32)
+    name0[:11] = b"Gaan slapen"
+    name1 = bytearray(32)
+    name2 = bytearray(32)
+    name2[:9] = b"Alles uit"
+
+    port = MagicMock()
+    port.read = MagicMock(
+        side_effect=[
+            b"M",
+            bytes([ord("n")]),
+            bytes(name0),
+            bytes(name1),
+            bytes(name2),
+        ]
+    )
+    port.reset_input_buffer = MagicMock()
+    port.close = MagicMock()
+    mock_serial_cls.return_value = port
+
+    client = Max200SerialClient("/dev/ttyUSB1")
+    result = client.download_mood_names(3)
+
+    assert result == {0: "Gaan slapen", 2: "Alles uit"}
+    port.write.assert_any_call(b"n0")
+    port.close.assert_called_once()
+
+    for mood_number in range(3):
+        addr = 0xC000 + mood_number * 32
+        base_call = port.write.call_args_list[1 + mood_number * 2]
+        assert base_call[0][0] == bytes([0xA0])
+        addr_call = port.write.call_args_list[2 + mood_number * 2]
+        assert addr_call[0][0][0] == addr >> 8
+        assert addr_call[0][0][1] == addr & 0xFF
+
+
+@patch("custom_components.dobiss_sx_evolution.serial_client.time.sleep")
+@patch("custom_components.dobiss_sx_evolution.serial_client.serial.Serial")
+def test_download_mood_names_port_closed_on_read_failure(mock_serial_cls, _mock_sleep):
+    """Port is closed even when a read fails mid-batch."""
+    name0 = bytearray(32)
+    name0[:11] = b"Gaan slapen"
+
+    port = MagicMock()
+    port.read = MagicMock(
+        side_effect=[
+            b"M",
+            bytes([ord("n")]),
+            bytes(name0),
+            serial.SerialException("read failed"),
+        ]
+    )
+    port.reset_input_buffer = MagicMock()
+    port.close = MagicMock()
+    mock_serial_cls.return_value = port
+
+    client = Max200SerialClient("/dev/ttyUSB1")
+    with pytest.raises(serial.SerialException, match="read failed"):
+        client.download_mood_names(100)
+
+    port.close.assert_called_once()

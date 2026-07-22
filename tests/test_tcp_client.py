@@ -218,3 +218,80 @@ async def test_download_module_output_names_propagates_connection_error() -> Non
         pytest.raises(ConnectionError, match="boom"),
     ):
         await client.download_module_output_names(0, 3)
+
+
+@patch("custom_components.dobiss_sx_evolution.tcp_client.asyncio.open_connection")
+async def test_download_mood_name_returns_parsed_name(mock_open) -> None:
+    """download_mood_name sends intro and parses the response."""
+    response = bytearray(32)
+    response[0:11] = b"Gaan slapen"
+    writer = _mock_writer()
+    mock_open.return_value = (_mock_reader(bytes(response)), writer)
+
+    client = Max200TcpClient("10.0.0.1", 1001)
+    result = await client.download_mood_name(0)
+
+    assert result == "Gaan slapen"
+
+
+@patch("custom_components.dobiss_sx_evolution.tcp_client.asyncio.open_connection")
+async def test_download_mood_name_unconfigured(mock_open) -> None:
+    """download_mood_name returns None for unconfigured mood."""
+    response = bytearray(32)
+    response[1] = 0xFF
+    writer = _mock_writer()
+    mock_open.return_value = (_mock_reader(bytes(response)), writer)
+
+    client = Max200TcpClient("10.0.0.1", 1001)
+    result = await client.download_mood_name(0)
+
+    assert result is None
+
+
+async def test_download_mood_names_delegates_per_record() -> None:
+    """download_mood_names delegates to download_mood_name per record."""
+    names = {0: "Gaan slapen", 1: "Alles uit", 2: "Thuiskomen"}
+
+    async def fake_download(mood_number: int) -> str | None:
+        return names.get(mood_number)
+
+    client = Max200TcpClient("10.0.0.1", 1001)
+    with patch.object(
+        client, "download_mood_name", AsyncMock(side_effect=fake_download)
+    ) as mock_download:
+        result = await client.download_mood_names(3)
+
+    assert result == names
+    assert mock_download.await_count == 3
+
+
+async def test_download_mood_names_omits_unconfigured() -> None:
+    """A record with byte 1 == 0xFF (unconfigured) is omitted from the result."""
+
+    async def fake_download(mood_number: int) -> str | None:
+        if mood_number == 1:
+            return None
+        return f"Mood {mood_number}"
+
+    client = Max200TcpClient("10.0.0.1", 1001)
+    with patch.object(
+        client, "download_mood_name", AsyncMock(side_effect=fake_download)
+    ):
+        result = await client.download_mood_names(3)
+
+    assert 1 not in result
+    assert result == {0: "Mood 0", 2: "Mood 2"}
+
+
+async def test_download_mood_names_propagates_connection_error() -> None:
+    """A connection error mid-batch propagates to the caller."""
+    client = Max200TcpClient("10.0.0.1", 1001)
+    with (
+        patch.object(
+            client,
+            "download_mood_name",
+            AsyncMock(side_effect=ConnectionError("boom")),
+        ),
+        pytest.raises(ConnectionError, match="boom"),
+    ):
+        await client.download_mood_names(3)

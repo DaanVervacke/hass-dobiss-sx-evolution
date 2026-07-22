@@ -13,11 +13,13 @@ from custom_components.dobiss_sx_evolution.protocol import (
     build_clock_set_packets,
     build_config_download_intro,
     build_mood_frame,
+    build_mood_name_intro,
     build_output_name_intro,
     build_state_frame,
     can_to_ha_brightness,
     can_tx_to_rx,
     ha_to_can_brightness,
+    mood_name_eeprom_addr,
     output_name_eeprom_addr,
     parse_config_response,
     parse_output_name,
@@ -574,3 +576,75 @@ def test_output_name_eeprom_addr_matches_intro():
             intro = build_output_name_intro(m, o)
             assert intro[4] == addr >> 8
             assert intro[5] == addr & 0xFF
+
+
+# ---------------------------------------------------------------------------
+# mood_name_eeprom_addr / build_mood_name_intro
+# ---------------------------------------------------------------------------
+
+
+def test_mood_name_eeprom_addr_first_slot():
+    assert mood_name_eeprom_addr(0) == 0xC000
+
+
+def test_mood_name_eeprom_addr_formula():
+    assert mood_name_eeprom_addr(5) == 0xC000 + 5 * 32
+
+
+def test_build_mood_name_intro_structure():
+    """Intro has correct header and EEPROM address for mood 0."""
+    intro = build_mood_name_intro(0)
+    assert len(intro) == 16
+    assert intro[0] == 0xED
+    assert intro[1] == 0x6E
+    assert intro[2] == 0x30
+    assert intro[3] == 0xA0
+    # addr = 0xC000 + 0*32 = 0xC000
+    assert intro[4] == 0xC0
+    assert intro[5] == 0x00
+
+
+def test_build_mood_name_intro_address_calculation():
+    """Address = 0xC000 + mood_number*32."""
+    intro = build_mood_name_intro(50)
+    addr = 0xC000 + 50 * 32
+    assert intro[4] == addr >> 8
+    assert intro[5] == addr & 0xFF
+
+
+def test_mood_name_eeprom_addr_matches_intro():
+    """Address from the helper must match the intro builder."""
+    for n in range(100):
+        addr = mood_name_eeprom_addr(n)
+        intro = build_mood_name_intro(n)
+        assert intro[4] == addr >> 8
+        assert intro[5] == addr & 0xFF
+
+
+# ---------------------------------------------------------------------------
+# parse_output_name reused for mood names (n0 records are also 32-byte,
+# byte1==0xFF-unconfigured, printable-ASCII records)
+# ---------------------------------------------------------------------------
+
+
+def test_parse_output_name_valid_for_mood_name():
+    """Mood name records use the same 32-byte layout as output names."""
+    data = bytearray(32)
+    name = b"Gaan slapen"
+    data[: len(name)] = name
+    assert parse_output_name(bytes(data)) == "Gaan slapen"
+
+
+def test_parse_output_name_unconfigured_for_mood_name():
+    """Byte 1 == 0xFF also marks an unconfigured mood name."""
+    data = bytearray(32)
+    data[1] = 0xFF
+    assert parse_output_name(bytes(data)) is None
+
+
+def test_parse_output_name_strips_control_bytes_for_mood_name():
+    """Control bytes are stripped from mood name records too."""
+    data = bytearray(32)
+    name = b"\x1bAlles uit\x07"
+    data[: len(name)] = name
+    assert parse_output_name(bytes(data)) == "Alles uit"

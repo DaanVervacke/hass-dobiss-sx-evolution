@@ -198,6 +198,32 @@ def build_mood_frame(mood_number: int) -> tuple[int, bytes] | None:
     return CAN_ID_TX_STATE, bytes([0x00, MOOD_ADDRESS_BYTE, mood_number, 0x01])
 
 
+MOOD_NAME_RESPONSE_SIZE = OUTPUT_NAME_RESPONSE_SIZE
+
+
+def mood_name_eeprom_addr(mood_number: int) -> int:
+    """Calculate EEPROM address for a DescriptionSferenVars (n0) record.
+
+    The 0xC0 page base goes into addr_hi (high byte), the same pattern as
+    the 0x80 page base used by output_name_eeprom_addr for UitgangVars.
+    Callers split with >> 8 / & 0xFF.
+    """
+    return 0xC000 + mood_number * 32
+
+
+def build_mood_name_intro(mood_number: int) -> bytes:
+    """Build the 16-byte intro for a DescriptionSferenVars (n0) download request."""
+    addr = mood_name_eeprom_addr(mood_number)
+    intro = bytearray(16)
+    intro[0] = 0xED
+    intro[1] = 0x6E  # 'n'
+    intro[2] = 0x30  # '0'
+    intro[3] = EEPROM_BASE_BYTE
+    intro[4] = addr >> 8
+    intro[5] = addr & 0xFF
+    return bytes(intro)
+
+
 def can_to_ha_brightness(can_state: int) -> int:
     """Convert CAN echo brightness (0-90) to HA brightness (0-255)."""
     return min(can_state * 255 // MAX_CAN_BRIGHTNESS_RX, 255)

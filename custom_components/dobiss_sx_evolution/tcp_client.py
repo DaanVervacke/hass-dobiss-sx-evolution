@@ -14,9 +14,11 @@ from datetime import datetime
 from .const import MAX200_TCP_PORT
 from .protocol import (
     CONFIG_RESPONSE_SIZE,
+    MOOD_NAME_RESPONSE_SIZE,
     OUTPUT_NAME_RESPONSE_SIZE,
     build_clock_set_packets,
     build_config_download_intro,
+    build_mood_name_intro,
     build_output_name_intro,
     parse_config_response,
     parse_output_name,
@@ -138,4 +140,24 @@ class Max200TcpClient:
             name = await self.download_output_name(module_index, output_index)
             if name is not None:
                 names[output_index] = name
+        return names
+
+    async def download_mood_name(self, mood_number: int) -> str | None:
+        """n0 mood name download over TCP."""
+        intro = build_mood_name_intro(mood_number)
+        data = await self.send_and_receive(intro, response_size=MOOD_NAME_RESPONSE_SIZE)
+        return parse_output_name(data)
+
+    async def download_mood_names(self, count: int) -> dict[int, str]:
+        """n0 batch mood name download, connection per record.
+
+        Mirrors download_module_output_names: MaxTool's own LAN client never
+        holds one socket open across multiple separate intro/response
+        exchanges, so this reconnects per record.
+        """
+        names: dict[int, str] = {}
+        for mood_number in range(count):
+            name = await self.download_mood_name(mood_number)
+            if name is not None:
+                names[mood_number] = name
         return names
