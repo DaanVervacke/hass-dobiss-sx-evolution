@@ -2423,10 +2423,15 @@ async def test_import_subentry_type_shown_with_master(
 async def test_import_subentry_type_shown_with_max200_host(
     hass: HomeAssistant, mock_controller, mock_coordinator_tcp
 ) -> None:
-    """module_import is offered when max200_host is configured."""
+    """module_import is offered when max200_host is configured, next to module."""
     entry = await _setup_entry_with_max200_host(hass, mock_controller)
     types = DobissConfigFlow.async_get_supported_subentry_types(entry)
     assert SUBENTRY_TYPE_MODULE_IMPORT in types
+    assert list(types.keys()) == [
+        SUBENTRY_TYPE_MODULE,
+        SUBENTRY_TYPE_MODULE_IMPORT,
+        SUBENTRY_TYPE_MOOD,
+    ]
 
 
 async def test_import_creates_subentries(
