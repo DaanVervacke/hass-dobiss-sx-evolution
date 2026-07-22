@@ -1327,7 +1327,7 @@ class MoodImportSubentryFlowHandler(ConfigSubentryFlow):
         new_moods = {
             number: name
             for number, name in names.items()
-            if number not in existing_moods
+            if number not in existing_moods and name.strip() not in ("", "-")
         }
 
         if not new_moods:

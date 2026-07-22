@@ -3081,6 +3081,58 @@ async def test_mood_import_no_new_moods(
     assert result["reason"] == "no_new_moods"
 
 
+async def test_mood_import_skips_placeholder_names(
+    hass: HomeAssistant, mock_controller, mock_coordinator_serial
+) -> None:
+    """Placeholder names ("-" and blank/whitespace) are not imported."""
+    entry = await _setup_entry_with_master(hass, mock_controller)
+
+    mood_names = {0: "Coming home", 1: "-", 2: " ", 3: "All off"}
+
+    with patch(
+        "custom_components.dobiss_sx_evolution.config_flow.Max200SerialClient"
+    ) as mock_client_cls:
+        mock_client = mock_client_cls.return_value
+        mock_client.download_mood_names = MagicMock(return_value=mood_names)
+
+        result = await hass.config_entries.subentries.async_init(
+            (entry.entry_id, SUBENTRY_TYPE_MOOD_IMPORT),
+            context={"source": "user"},
+        )
+
+    assert result["type"] == FlowResultType.ABORT
+    assert result["reason"] == "import_successful"
+    assert result["description_placeholders"]["count"] == "2"
+
+    mood_numbers = {
+        sub.data["mood_number"]
+        for sub in entry.subentries.values()
+        if sub.subentry_type == SUBENTRY_TYPE_MOOD
+    }
+    assert mood_numbers == {0, 3}
+
+
+async def test_mood_import_only_placeholders_no_new_moods(
+    hass: HomeAssistant, mock_controller, mock_coordinator_serial
+) -> None:
+    """When every downloaded name is a placeholder, abort with no_new_moods."""
+    entry = await _setup_entry_with_master(hass, mock_controller)
+
+    with patch(
+        "custom_components.dobiss_sx_evolution.config_flow.Max200SerialClient"
+    ) as mock_client_cls:
+        mock_client = mock_client_cls.return_value
+        mock_client.download_mood_names = MagicMock(return_value={5: "-", 6: "-"})
+
+        result = await hass.config_entries.subentries.async_init(
+            (entry.entry_id, SUBENTRY_TYPE_MOOD_IMPORT),
+            context={"source": "user"},
+        )
+
+    assert result["type"] == FlowResultType.ABORT
+    assert result["reason"] == "no_new_moods"
+
+
 async def test_mood_import_serial_failure(
     hass: HomeAssistant, mock_controller, mock_coordinator_serial
 ) -> None:
