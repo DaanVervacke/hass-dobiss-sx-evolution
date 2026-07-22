@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -133,6 +133,9 @@ class DobissCoordinator(DataUpdateCoordinator[dict[OutputKey, int]]):
             Max200TcpClient(max200_host) if max200_host else None
         )
 
+        self.last_clock_sync_ok: bool | None = None
+        self.last_clock_sync: datetime | None = None
+
         self._debounce_unsub: Callable[[], None] | None = None
 
     async def _async_setup(self) -> None:
@@ -202,6 +205,13 @@ class DobissCoordinator(DataUpdateCoordinator[dict[OutputKey, int]]):
         setup also calls this with no argument, but that call site wraps its
         own try/except (see `_async_setup`) since it must never fail entry
         setup either.
+
+        `last_clock_sync_ok` / `last_clock_sync` are updated for every attempt
+        (both `now`, the time of the attempt, regardless of outcome), so the
+        Max200-link diagnostic entities reflect the most recent try even when
+        it failed. Over TCP, `send_command` is fire-and-forget: "ok" there
+        only means the command was sent without raising, not that the Max200
+        confirmed or applied it.
         """
         now = dt_util.now()
         if self.tcp_client is not None:
@@ -209,6 +219,11 @@ class DobissCoordinator(DataUpdateCoordinator[dict[OutputKey, int]]):
                 await self.tcp_client.sync_clock(now)
             except Exception:  # noqa: BLE001
                 _LOGGER.warning("Clock sync to Max200 failed", exc_info=True)
+                self.last_clock_sync_ok = False
+                self.last_clock_sync = now
+            else:
+                self.last_clock_sync_ok = True
+                self.last_clock_sync = now
             return
         if self.serial_client is not None:
             if _now is not None:
@@ -218,8 +233,23 @@ class DobissCoordinator(DataUpdateCoordinator[dict[OutputKey, int]]):
                     )
                 except Exception:  # noqa: BLE001
                     _LOGGER.warning("Clock sync to Max200 failed", exc_info=True)
+                    self.last_clock_sync_ok = False
+                    self.last_clock_sync = now
+                else:
+                    self.last_clock_sync_ok = True
+                    self.last_clock_sync = now
                 return
-            await self.hass.async_add_executor_job(self.serial_client.sync_clock, now)
+            try:
+                await self.hass.async_add_executor_job(
+                    self.serial_client.sync_clock, now
+                )
+            except Exception:
+                self.last_clock_sync_ok = False
+                self.last_clock_sync = now
+                raise
+            else:
+                self.last_clock_sync_ok = True
+                self.last_clock_sync = now
 
     async def async_shutdown(self) -> None:
         """Tear down the controller, then the coordinator."""

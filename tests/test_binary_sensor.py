@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock, patch
+
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -38,4 +40,60 @@ async def test_bus_connected_binary_sensor(
 
     state = hass.states.get("binary_sensor.max200_can_bus_connected")
     assert state is not None
+    assert state.state == "off"
+
+
+async def test_max200_link_binary_sensor_not_created_without_link(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """The Max200 link binary sensor must not exist when no link is configured."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={"connection_type": CONNECTION_TYPE_SOCKETCAND, **MOCK_CONFIG},
+        title="DOBISS",
+        version=1,
+    )
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert hass.states.get("binary_sensor.max200_max200_link") is None
+
+
+async def test_max200_link_binary_sensor_created_and_tracks_coordinator(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """The Max200 link binary sensor is created when serial is configured."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            "connection_type": CONNECTION_TYPE_SOCKETCAND,
+            "master_device": "/dev/ttyUSB1",
+            **MOCK_CONFIG,
+        },
+        title="DOBISS",
+        version=1,
+    )
+    entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.dobiss_sx_evolution.coordinator.Max200SerialClient"
+    ) as mock_serial_cls:
+        mock_serial = mock_serial_cls.return_value
+        mock_serial.device = "/dev/ttyUSB1"
+        mock_serial.sync_clock = MagicMock()
+
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    state = hass.states.get("binary_sensor.max200_max200_link")
+    assert state is not None
+    assert state.state == "on"
+
+    coordinator = entry.runtime_data
+    coordinator.last_clock_sync_ok = False
+    coordinator.async_set_updated_data(coordinator.data)
+    await hass.async_block_till_done()
+
+    state = hass.states.get("binary_sensor.max200_max200_link")
     assert state.state == "off"

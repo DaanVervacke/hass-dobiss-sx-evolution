@@ -599,3 +599,116 @@ async def test_async_sync_clock_direct_call_raises_on_serial_failure(
 
         with pytest.raises(ConnectionError):
             await coordinator.async_sync_clock()
+
+
+async def test_async_sync_clock_records_ok_and_timestamp_on_serial_success(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """A successful serial sync records last_clock_sync_ok=True and a timestamp."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=_make_entry_data(master_device="/dev/ttyUSB1"),
+        title="DOBISS",
+        version=1,
+    )
+    entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.dobiss_sx_evolution.coordinator.Max200SerialClient"
+    ) as mock_serial_cls:
+        mock_serial = mock_serial_cls.return_value
+        mock_serial.device = "/dev/ttyUSB1"
+        mock_serial.sync_clock = MagicMock()
+
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+        coordinator: DobissCoordinator = entry.runtime_data
+        assert coordinator.last_clock_sync_ok is True
+        assert coordinator.last_clock_sync is not None
+
+
+async def test_async_sync_clock_records_failure_on_serial_error(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """A failed serial sync records last_clock_sync_ok=False and a timestamp."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=_make_entry_data(master_device="/dev/ttyUSB1"),
+        title="DOBISS",
+        version=1,
+    )
+    entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.dobiss_sx_evolution.coordinator.Max200SerialClient"
+    ) as mock_serial_cls:
+        mock_serial = mock_serial_cls.return_value
+        mock_serial.device = "/dev/ttyUSB1"
+        mock_serial.sync_clock = MagicMock()
+
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+        coordinator: DobissCoordinator = entry.runtime_data
+        mock_serial.sync_clock.side_effect = ConnectionError("device gone")
+
+        with pytest.raises(ConnectionError):
+            await coordinator.async_sync_clock()
+
+        assert coordinator.last_clock_sync_ok is False
+        assert coordinator.last_clock_sync is not None
+
+
+async def test_async_sync_clock_records_ok_on_tcp_success(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """A successful TCP sync records last_clock_sync_ok=True and a timestamp."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=_make_entry_data(max200_host="10.0.0.2"),
+        title="DOBISS",
+        version=1,
+    )
+    entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.dobiss_sx_evolution.coordinator.Max200TcpClient"
+    ) as mock_tcp_cls:
+        mock_tcp = mock_tcp_cls.return_value
+        mock_tcp.host = "10.0.0.2"
+        mock_tcp.sync_clock = AsyncMock()
+
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+        coordinator: DobissCoordinator = entry.runtime_data
+        assert coordinator.last_clock_sync_ok is True
+        assert coordinator.last_clock_sync is not None
+
+
+async def test_async_sync_clock_records_failure_on_tcp_error(
+    hass: HomeAssistant, mock_controller
+) -> None:
+    """A failed TCP sync records last_clock_sync_ok=False (fire-and-forget send)."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=_make_entry_data(max200_host="10.0.0.2"),
+        title="DOBISS",
+        version=1,
+    )
+    entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.dobiss_sx_evolution.coordinator.Max200TcpClient"
+    ) as mock_tcp_cls:
+        mock_tcp = mock_tcp_cls.return_value
+        mock_tcp.host = "10.0.0.2"
+        mock_tcp.sync_clock = AsyncMock(side_effect=OSError("unreachable"))
+
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+        coordinator: DobissCoordinator = entry.runtime_data
+        assert coordinator.last_clock_sync_ok is False
+        assert coordinator.last_clock_sync is not None

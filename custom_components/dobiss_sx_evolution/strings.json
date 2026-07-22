@@ -329,11 +329,17 @@
     "binary_sensor": {
       "bus_connected": {
         "name": "CAN bus connected"
+      },
+      "max200_link": {
+        "name": "Max200 link"
       }
     },
     "sensor": {
       "reconnect_count": {
         "name": "CAN bus reconnections"
+      },
+      "last_clock_sync": {
+        "name": "Last clock sync"
       }
     }
   },
