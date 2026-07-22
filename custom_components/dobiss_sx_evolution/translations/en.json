@@ -7,7 +7,7 @@
       },
       "socketcand": {
         "title": "Connect via socketcand",
-        "description": "Home Assistant connects to the DOBISS SX Evolution through a socketcand daemon running near the bus.",
+        "description": "The fields above connect Home Assistant to the DOBISS SX Evolution CAN bus through a socketcand daemon. This is the live link that carries light, switch, and cover state. Max200 serial port and Max200 TCP host below are optional and separate: both point at the same Max200 (DO5120) controller, just reached two different ways, and are only used for clock sync and importing modules. Fill in one of the two, not both.",
         "data": {
           "host": "socketcand host",
           "port": "socketcand port",
@@ -19,13 +19,13 @@
           "host": "Hostname or IP address of the machine running socketcand. For example: 192.168.1.10 or homeserver.local.",
           "port": "TCP port socketcand is listening on. The default for this integration is 29536.",
           "interface": "Name of the CAN interface on the socketcand host. The default for this integration is can0.",
-          "master_device": "Serial port of the Max200 master module (SX-kabel). Optional, enables clock sync and module import.",
-          "max200_host": "Hostname or IP address of the Max200 master module. Optional, enables clock sync and module import."
+          "master_device": "Optional. The serial port of the Max200's SX cable (a USB-serial adapter, e.g. /dev/ttyUSB0 or COM3). Leave blank if you use the TCP host below or don't need clock sync / import.",
+          "max200_host": "Optional. IP or hostname of the Max200 on your network. Leave blank if you use the serial port above."
         }
       },
       "reauth_socketcand": {
         "title": "Reconnect to socketcand",
-        "description": "Home Assistant lost the connection. Confirm or update the socketcand details below.",
+        "description": "Home Assistant lost the connection. Confirm or update the socketcand details below. The Max200 serial port and Max200 TCP host fields are unrelated to the CAN bus link, optional, and are only used for clock sync and module import. Pick one of the two, not both.",
         "data": {
           "host": "socketcand host",
           "port": "socketcand port",
@@ -37,13 +37,13 @@
           "host": "Hostname or IP address of the machine running socketcand.",
           "port": "TCP port socketcand is listening on (default 29536).",
           "interface": "Name of the CAN interface on the socketcand host (typically can0).",
-          "master_device": "Serial port of the Max200 master module (SX-kabel). Optional, enables clock sync and module import.",
-          "max200_host": "Hostname or IP address of the Max200 master module. Optional, enables clock sync and module import."
+          "master_device": "Optional. The serial port of the Max200's SX cable (a USB-serial adapter, e.g. /dev/ttyUSB0 or COM3). Leave blank if you use the TCP host below or don't need clock sync / import.",
+          "max200_host": "Optional. IP or hostname of the Max200 on your network. Leave blank if you use the serial port above."
         }
       },
       "reauth_usb": {
         "title": "Reconnect USB CAN adapter",
-        "description": "Home Assistant lost the connection. Confirm or update the USB CAN adapter details below.",
+        "description": "Home Assistant lost the connection. Confirm or update the USB CAN adapter details below. The Max200 serial port and Max200 TCP host fields are unrelated to the CAN bus link, optional, and are only used for clock sync and module import. Pick one of the two, not both.",
         "data": {
           "device": "Device path",
           "master_device": "Max200 (DO5120) serial port",
@@ -51,13 +51,13 @@
         },
         "data_description": {
           "device": "Path to the serial device.",
-          "master_device": "Serial port of the Max200 master module (SX-kabel). Optional, enables clock sync and module import.",
-          "max200_host": "Hostname or IP address of the Max200 master module. Optional, enables clock sync and module import."
+          "master_device": "Optional. The serial port of the Max200's SX cable (a USB-serial adapter, e.g. /dev/ttyUSB0 or COM3). Leave blank if you use the TCP host below or don't need clock sync / import.",
+          "max200_host": "Optional. IP or hostname of the Max200 on your network. Leave blank if you use the serial port above."
         }
       },
       "usb_manual": {
         "title": "Connect via USB CAN adapter",
-        "description": "Connect directly to a USB CAN adapter like Canable, Lawicel, or other compatible devices.",
+        "description": "The device path above connects Home Assistant to the DOBISS SX Evolution CAN bus directly through a USB CAN adapter like Canable, Lawicel, or other compatible devices. This is the live link that carries light, switch, and cover state. Max200 serial port and Max200 TCP host below are optional and separate: both point at the same Max200 (DO5120) controller, just reached two different ways, and are only used for clock sync and importing modules. Fill in one of the two, not both.",
         "data": {
           "device": "Device path",
           "master_device": "Max200 (DO5120) serial port",
@@ -65,8 +65,8 @@
         },
         "data_description": {
           "device": "Path to the serial device. On Linux: /dev/ttyACM0, /dev/ttyUSB0. On Windows: COM3, COM4, etc.",
-          "master_device": "Serial port of the Max200 master module (SX-kabel). Optional, enables clock sync and module import.",
-          "max200_host": "Hostname or IP address of the Max200 master module. Optional, enables clock sync and module import."
+          "master_device": "Optional. The serial port of the Max200's SX cable (a USB-serial adapter, e.g. /dev/ttyUSB0 or COM3). Leave blank if you use the TCP host below or don't need clock sync / import.",
+          "max200_host": "Optional. IP or hostname of the Max200 on your network. Leave blank if you use the serial port above."
         }
       },
       "reconfigure": {
@@ -80,8 +80,8 @@
         }
       },
       "reconfigure_socketcand": {
-        "title": "Reconfigure socketcand connection",
-        "description": "Update the socketcand connection details for the DOBISS SX Evolution CAN bus.",
+        "title": "Reconfigure connection (socketcand + optional Max200 link)",
+        "description": "Update the socketcand connection details for the DOBISS SX Evolution CAN bus, plus the optional Max200 serial port or TCP host used only for clock sync and module import. Pick one of the two, not both.",
         "data": {
           "host": "socketcand host",
           "port": "socketcand port",
@@ -93,13 +93,13 @@
           "host": "Hostname or IP address of the machine running socketcand.",
           "port": "TCP port socketcand is listening on (default 29536).",
           "interface": "Name of the CAN interface on the socketcand host (typically can0).",
-          "master_device": "Serial port of the Max200 master module (SX-kabel). Optional, enables clock sync and module import.",
-          "max200_host": "Hostname or IP address of the Max200 master module. Optional, enables clock sync and module import."
+          "master_device": "Optional. The serial port of the Max200's SX cable (a USB-serial adapter, e.g. /dev/ttyUSB0 or COM3). Leave blank if you use the TCP host below or don't need clock sync / import.",
+          "max200_host": "Optional. IP or hostname of the Max200 on your network. Leave blank if you use the serial port above."
         }
       },
       "reconfigure_usb": {
-        "title": "Reconfigure USB connection",
-        "description": "Update the USB CAN adapter connection details for the DOBISS SX Evolution CAN bus.",
+        "title": "Reconfigure connection (USB adapter + optional Max200 link)",
+        "description": "Update the USB CAN adapter connection details for the DOBISS SX Evolution CAN bus, plus the optional Max200 serial port or TCP host used only for clock sync and module import. Pick one of the two, not both.",
         "data": {
           "device": "Device path",
           "master_device": "Max200 (DO5120) serial port",
@@ -107,8 +107,8 @@
         },
         "data_description": {
           "device": "Path to the serial device.",
-          "master_device": "Serial port of the Max200 master module (SX-kabel). Optional, enables clock sync and module import.",
-          "max200_host": "Hostname or IP address of the Max200 master module. Optional, enables clock sync and module import."
+          "master_device": "Optional. The serial port of the Max200's SX cable (a USB-serial adapter, e.g. /dev/ttyUSB0 or COM3). Leave blank if you use the TCP host below or don't need clock sync / import.",
+          "max200_host": "Optional. IP or hostname of the Max200 on your network. Leave blank if you use the serial port above."
         }
       }
     },
