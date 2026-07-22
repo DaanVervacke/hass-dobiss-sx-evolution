@@ -352,10 +352,23 @@ def test_build_clock_set_packets_bcd_values():
     assert output[0] == to_bcd(45)  # second
     assert output[1] == to_bcd(30)  # minute
     assert output[2] == to_bcd(14)  # hour
-    assert output[3] == to_bcd(dt.isoweekday())  # dow (Friday = 5)
+    assert output[3] == to_bcd(dt.isoweekday() % 7 + 1)  # dow, Sunday=1 (Fri=6)
     assert output[4] == to_bcd(17)  # day
     assert output[5] == to_bcd(7)  # month
     assert output[6] == to_bcd(26)  # year % 100
+
+
+def test_build_clock_set_packets_weekday_sunday_is_one():
+    """Max200 weekday convention: Sunday=1..Saturday=7 (not isoweekday's Monday=1)."""
+    wednesday = datetime(2026, 7, 15, 12, 0, 0)  # 2026-07-15 is a Wednesday
+    sunday = datetime(2026, 7, 19, 12, 0, 0)  # 2026-07-19 is a Sunday
+    assert wednesday.isoweekday() == 3
+    assert sunday.isoweekday() == 7
+
+    _, wednesday_output = build_clock_set_packets(wednesday)
+    _, sunday_output = build_clock_set_packets(sunday)
+    assert wednesday_output[3] == 0x04
+    assert sunday_output[3] == 0x01
 
 
 # ---------------------------------------------------------------------------

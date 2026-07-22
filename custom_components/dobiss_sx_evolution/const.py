@@ -64,3 +64,6 @@ SERIAL_DELAY_AFTER_BASE_S: Final = 0.001
 SERIAL_DELAY_AFTER_ADDR_S: Final = 0.002
 SERIAL_HANDSHAKE_RETRIES: Final = 3
 SERIAL_RETRY_DELAY_S: Final = 0.1
+
+CLOCK_HANDSHAKE_SETTLE_S: Final = 0.15  # wait after 'K' echo before payload
+CLOCK_INTER_BYTE_S: Final = 0.025  # gap between each of the 7 BCD bytes

@@ -33,7 +33,13 @@ def to_bcd(value: int) -> int:
 def build_clock_set_packets(dt: datetime) -> tuple[bytes, bytes]:
     """Return (intro, output) for a K0 clock-set command.
 
-    Field order TBD from live testing. Starting with standard RTC order.
+    Verified against MaxTool on the wire (2026-07-22). Output is 7 BCD bytes:
+    second, minute, hour, weekday, day, month, year%100. The Max200 weekday
+    convention is Sunday=1 (Sun=1..Sat=7), so isoweekday() (Monday=1) must be
+    rotated with ``% 7 + 1``.
+
+    Serial callers must additionally pace the 7 output bytes (see
+    Max200SerialClient.sync_clock); TCP sends intro+output as one stream.
     """
     intro = bytearray(16)
     intro[0] = 0xED
@@ -45,7 +51,7 @@ def build_clock_set_packets(dt: datetime) -> tuple[bytes, bytes]:
             to_bcd(dt.second),
             to_bcd(dt.minute),
             to_bcd(dt.hour),
-            to_bcd(dt.isoweekday()),
+            to_bcd(dt.isoweekday() % 7 + 1),  # Max200 weekday: Sunday=1
             to_bcd(dt.day),
             to_bcd(dt.month),
             to_bcd(dt.year % 100),

@@ -13,6 +13,8 @@ from datetime import datetime
 import serial
 
 from .const import (
+    CLOCK_HANDSHAKE_SETTLE_S,
+    CLOCK_INTER_BYTE_S,
     MASTER_SERIAL_BAUDRATE,
     SERIAL_DELAY_AFTER_ADDR_S,
     SERIAL_DELAY_AFTER_BASE_S,
@@ -26,10 +28,10 @@ from .protocol import (
     EEPROM_READ_DIRECTION,
     EEPROM_READ_RECORD_SIZE,
     OUTPUT_NAME_RESPONSE_SIZE,
+    build_clock_set_packets,
     output_name_eeprom_addr,
     parse_config_response,
     parse_output_name,
-    to_bcd,
 )
 
 
@@ -98,23 +100,20 @@ class Max200SerialClient:
         time.sleep(SERIAL_DELAY_AFTER_ADDR_S)
 
     def sync_clock(self, dt: datetime) -> None:
-        """K0 clock set. Blocking."""
+        """K0 clock set. Blocking.
+
+        The Max200 drops the payload if the 7 bytes arrive as one burst, so
+        they are paced: a settle after the 'K' handshake echo, then each byte
+        individually with a short gap (mirrors MaxTool's WriteOneByte loop).
+        """
+        _intro, output = build_clock_set_packets(dt)
         port = self._open()
         try:
             self._handshake(port, "K0")
-            port.write(
-                bytes(
-                    [
-                        to_bcd(dt.second),
-                        to_bcd(dt.minute),
-                        to_bcd(dt.hour),
-                        to_bcd(dt.isoweekday()),
-                        to_bcd(dt.day),
-                        to_bcd(dt.month),
-                        to_bcd(dt.year % 100),
-                    ]
-                )
-            )
+            time.sleep(CLOCK_HANDSHAKE_SETTLE_S)
+            for b in output:
+                port.write(bytes([b]))
+                time.sleep(CLOCK_INTER_BYTE_S)
         finally:
             port.close()
 

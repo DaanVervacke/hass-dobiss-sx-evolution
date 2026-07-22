@@ -9,6 +9,8 @@ import pytest
 import serial
 
 from custom_components.dobiss_sx_evolution.const import (
+    CLOCK_HANDSHAKE_SETTLE_S,
+    CLOCK_INTER_BYTE_S,
     SERIAL_HANDSHAKE_RETRIES,
     SERIAL_RETRY_DELAY_S,
 )
@@ -48,8 +50,9 @@ def test_device_property():
     assert client.device == "/dev/ttyUSB1"
 
 
+@patch("custom_components.dobiss_sx_evolution.serial_client.time.sleep")
 @patch("custom_components.dobiss_sx_evolution.serial_client.serial.Serial")
-def test_sync_clock_sends_bcd_bytes(mock_serial_cls):
+def test_sync_clock_sends_bcd_bytes(mock_serial_cls, mock_sleep):
     dt = datetime(2026, 7, 17, 14, 30, 45)
     port = _mock_port(echo_byte=ord("K"))
     mock_serial_cls.return_value = port
@@ -58,16 +61,22 @@ def test_sync_clock_sends_bcd_bytes(mock_serial_cls):
     client.sync_clock(dt)
 
     port.write.assert_any_call(b"K0")
-    bcd_call = port.write.call_args_list[-1]
-    data = bcd_call[0][0]
+    payload_calls = port.write.call_args_list[1:]
+    assert len(payload_calls) == 7
+    data = b"".join(call.args[0] for call in payload_calls)
     assert data[0] == to_bcd(45)
     assert data[1] == to_bcd(30)
     assert data[2] == to_bcd(14)
-    assert data[3] == to_bcd(dt.isoweekday())
+    assert data[3] == to_bcd(dt.isoweekday() % 7 + 1)  # Max200 weekday: Sunday=1
     assert data[4] == to_bcd(17)
     assert data[5] == to_bcd(7)
     assert data[6] == to_bcd(26)
     port.close.assert_called_once()
+
+    assert mock_sleep.call_args_list[0].args == (CLOCK_HANDSHAKE_SETTLE_S,)
+    for call in mock_sleep.call_args_list[1:]:
+        assert call.args == (CLOCK_INTER_BYTE_S,)
+    assert mock_sleep.call_count == 8  # 1 settle + 7 inter-byte gaps
 
 
 @patch("custom_components.dobiss_sx_evolution.serial_client.time.sleep")
@@ -123,7 +132,9 @@ def test_handshake_serial_exception_then_succeeds(mock_serial_cls, _mock_sleep):
     port = MagicMock()
     port.read = MagicMock(side_effect=[b"M", b"M", bytes([ord("K")])])
     port.write = MagicMock(
-        side_effect=[serial.SerialException("transient"), None, None]
+        # 1 failed handshake write + 1 successful handshake write
+        # + 7 individual paced payload byte writes
+        side_effect=[serial.SerialException("transient"), *([None] * 8)]
     )
     port.reset_input_buffer = MagicMock()
     port.close = MagicMock()
